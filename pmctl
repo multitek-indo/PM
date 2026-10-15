@@ -1,0 +1,10 @@
+#!/bin/bash
+set -euo pipefail
+cd /opt/multitek-pm
+case "${1:-status}" in
+  status) docker compose -p multitek-pm -f compose.yaml --env-file .env ps ;;
+  logs) docker compose -p multitek-pm -f compose.yaml --env-file .env logs --tail=100 web scheduler db ;;
+  stop) docker compose -p multitek-pm -f compose.yaml --env-file .env stop ;;
+  start) docker compose -p multitek-pm -f compose.yaml --env-file .env up -d db web scheduler ;;
+  *) echo 'Pilihan: status | logs | stop | start'; exit 2 ;;
+esac

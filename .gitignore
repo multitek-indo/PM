@@ -1,0 +1,42 @@
+# Runtime configuration and credentials: never commit these.
+.env
+.env.*
+!.env.example
+**/private/
+**/secrets/
+**/.ssh/
+**/.cloudflared/
+id_rsa*
+id_ed25519*
+*.pem
+*.key
+*.p12
+*.pfx
+# Runtime data, reports and backups
+**/reports/
+**/backups/
+**/backup/
+**/logs/
+**/data/
+**/pgdata/
+**/media/
+**/uploads/
+*.log
+*.sql
+*.dump
+*.db
+*.sqlite*
+*.csv
+*.xlsx
+*.zip
+*.tar
+*.gz
+*.mp4
+# Generated files
+**/__pycache__/
+*.py[cod]
+**/staticfiles/
+.venv/
+venv/
+node_modules/
+.DS_Store

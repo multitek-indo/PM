@@ -1,0 +1,162 @@
+{
+  "captured_at_utc": "20261015T111955Z",
+  "source_files": {
+    "docs/README-installer-legacy.md": {
+      "source": "README.md",
+      "sha256": "3e4556dc550fe7b21a679d1b1e06f1f7b5aa97d36e11f17d7f09d7a0f0268c61"
+    },
+    "app/config/__init__.py": {
+      "source": "app/config/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "app/config/settings.py": {
+      "source": "app/config/settings.py",
+      "sha256": "04d426c00b8f0bfb96fa3a2417ddceff13978e11837fcba739d020a0171cc035"
+    },
+    "app/config/test_settings.py": {
+      "source": "app/config/test_settings.py",
+      "sha256": "9b23281362b1cddff3f016e0de273edb120c77212796949fc8172bb5168222d3"
+    },
+    "app/config/urls.py": {
+      "source": "app/config/urls.py",
+      "sha256": "95cc0bdc9071a4791c2cceb0d8942092cf8ab9bc312935b37f8d0e3c47775498"
+    },
+    "app/config/wsgi.py": {
+      "source": "app/config/wsgi.py",
+      "sha256": "c9ac55f04e948c72ea52505763b80222a16f65b689b31d32259184166e731908"
+    },
+    "app/maintenance/__init__.py": {
+      "source": "app/maintenance/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "app/maintenance/admin.py": {
+      "source": "app/maintenance/admin.py",
+      "sha256": "460d12694117b85536b18798907a184e8af16f305fddb6bfe652955c087a61a1"
+    },
+    "app/maintenance/forms.py": {
+      "source": "app/maintenance/forms.py",
+      "sha256": "056cbe9e96650584affc4d3e1804ec3af7ca9ea9af405729fda09b897695ae45"
+    },
+    "app/maintenance/importing.py": {
+      "source": "app/maintenance/importing.py",
+      "sha256": "1230443dbcf9038efbbc7652a145b09d63cd01465b3c4aea6029811352416108"
+    },
+    "app/maintenance/management/__init__.py": {
+      "source": "app/maintenance/management/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "app/maintenance/management/commands/__init__.py": {
+      "source": "app/maintenance/management/commands/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "app/maintenance/management/commands/pm_bootstrap.py": {
+      "source": "app/maintenance/management/commands/pm_bootstrap.py",
+      "sha256": "b272f50698a395a493c232675139927135f2866b02a78885b75fe02f9bca64e1"
+    },
+    "app/maintenance/management/commands/pm_scheduler.py": {
+      "source": "app/maintenance/management/commands/pm_scheduler.py",
+      "sha256": "eb50a54438e7c58f5a9b426ee34b281bd1d68d182ccba708f334991ddb97ba19"
+    },
+    "app/maintenance/migrations/0001_initial.py": {
+      "source": "app/maintenance/migrations/0001_initial.py",
+      "sha256": "1682991555da7e4d2d12481d43cb624d3b24e5ab5fadb45a9f2ab5521f1a0855"
+    },
+    "app/maintenance/migrations/__init__.py": {
+      "source": "app/maintenance/migrations/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "app/maintenance/models.py": {
+      "source": "app/maintenance/models.py",
+      "sha256": "e1aa5cd7e6e8dd6ca3e342e889c976683043f2f1dbab7ffb466362db41a13cf2"
+    },
+    "app/maintenance/scheduling.py": {
+      "source": "app/maintenance/scheduling.py",
+      "sha256": "dea2c2b3b48fef9f4ada4b644351a6769423d67dfc1c0a4ef6f0920cc735a4b4"
+    },
+    "app/maintenance/services.py": {
+      "source": "app/maintenance/services.py",
+      "sha256": "2f75c064e13a7b46d51b040c033fd1ccef64c57794bc43053eb71cd2f2727885"
+    },
+    "app/maintenance/tests.py": {
+      "source": "app/maintenance/tests.py",
+      "sha256": "827ffef331298a81ea9483938535fe5f8de201a8d3b585c105c1c8eb63c72133"
+    },
+    "app/maintenance/views.py": {
+      "source": "app/maintenance/views.py",
+      "sha256": "af53e874781d9fd9b8d64c086ae747990c8d0b2df7909bd63f7c2d3340d9e57b"
+    },
+    "app/manage.py": {
+      "source": "app/manage.py",
+      "sha256": "652b4aa7c32e54dc85a4765748812466d9b448df3abd6a48480fe371779d29b0"
+    },
+    "app/static/pm.css": {
+      "source": "app/static/pm.css",
+      "sha256": "f06f9c4038647a1505ea5c1d0a09ae5a3366dc1ee2469cc9563416b9fca12773"
+    },
+    "app/templates/base.html": {
+      "source": "app/templates/base.html",
+      "sha256": "32a3c84a27fd1f05df287f6d08e0c3386103b78713ec4e49505954be8219d942"
+    },
+    "app/templates/dashboard.html": {
+      "source": "app/templates/dashboard.html",
+      "sha256": "68b9f2adb3f4bd0331ac8b63c1ee8a15a4dbf3d88bdfe766b019977d0a5d2c42"
+    },
+    "app/templates/import.html": {
+      "source": "app/templates/import.html",
+      "sha256": "082175958976f120159865b80264b24bad6799360330666e3949225c59165257"
+    },
+    "app/templates/machine.html": {
+      "source": "app/templates/machine.html",
+      "sha256": "93abfb3b7135685925c2ab813ef73be9537b1548623cdacd85adccafaa81d438"
+    },
+    "app/templates/machines.html": {
+      "source": "app/templates/machines.html",
+      "sha256": "1e369585b832cb9cf1b17476463f494af3a5cc70987e056d50d9ee4663420515"
+    },
+    "app/templates/order.html": {
+      "source": "app/templates/order.html",
+      "sha256": "3febc5c31a920b341a9ed347dd94d6035215792640389a7809df850d41c62aa8"
+    },
+    "app/templates/orders.html": {
+      "source": "app/templates/orders.html",
+      "sha256": "f9237b29940ee12d4f9f7a20ac2d5ba25077fe0f6ab3c0fc21dc3278a751f45e"
+    },
+    "app/templates/pagination.html": {
+      "source": "app/templates/pagination.html",
+      "sha256": "a5540d6737cfa8519441e8f6084e605c2414ddccdb90fa17e39b50af3838c837"
+    },
+    "app/templates/registration/login.html": {
+      "source": "app/templates/registration/login.html",
+      "sha256": "b431318034e67aa90f811d99358f1e3f6760f9c999452967624926341be7050c"
+    },
+    "app/templates/registration/password.html": {
+      "source": "app/templates/registration/password.html",
+      "sha256": "e06ea4796e0d6e85569f9235d6ad5b7430772a939301562e96f8f47bf2a448a3"
+    },
+    "compose.yaml": {
+      "source": "compose.yaml",
+      "sha256": "4cb94f2f9a90a011c9fe223a902883af02b3d3e0d748b3cd9d5108c22e1e421b"
+    },
+    "db-init/10-pm-role.sh": {
+      "source": "db-init/10-pm-role.sh",
+      "sha256": "dbdf435266bbcb770c6f511f9f349d3e856f5199893ca915622653f5b350acb4"
+    },
+    "ops/guard.py": {
+      "source": "ops/guard.py",
+      "sha256": "f18fada3e9627ff6a4bf6cc4310e79884a51f2e8d87b1b4089cb4f8e82cffbec"
+    },
+    "ops/local_check.py": {
+      "source": "ops/local_check.py",
+      "sha256": "931e1aef5dd2f86947005b4df6b4b06afe7101f91bbeb6298a5145e3dd1c4641"
+    },
+    "pmctl": {
+      "source": "pmctl",
+      "sha256": "64d8b57793e862ddeff012fe19674de0a33c527c2ee66ca38b4d69a5f83a0fee"
+    },
+    "requirements.txt": {
+      "source": "requirements.txt",
+      "sha256": "f1fb926c1b1b66371579a7bf4d5c610e63c402621796d84d7bebe0a0fd1f5b97"
+    }
+  },
+  "note": "Hashes of source-only snapshot; runtime data excluded."
+}
