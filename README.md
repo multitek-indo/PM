@@ -76,3 +76,18 @@ Jangan mengandalkan private repository sebagai tempat penyimpanan password.
 
 Tidak ada workflow auto-deploy, SSH key baru, token GitHub, konfigurasi DNS,
 perubahan Cloudflared/Tailscale, atau perubahan layanan lama dalam proses ekspor.
+
+
+<!-- MULTITEK-PM-HANDBOOK:BEGIN -->
+## Dokumentasi development dan manual pengguna
+
+Mulai dari **[Buku panduan Multitek PM](docs/handbook/README.md)**.
+
+- [Peta kode: bagian yang diubah dan fungsinya](docs/handbook/02-PETA-KODE.md)
+- [Development, pengujian, commit dan push](docs/handbook/03-DEVELOPMENT.md)
+- [Manual admin, supervisor dan teknisi](docs/handbook/07-MANUAL-PENGGUNA.md)
+- [Deployment dan operasi](docs/handbook/06-DEPLOYMENT-DAN-OPERASI.md)
+
+Dokumentasi bukan auto-deploy. Kode produksi tetap di `/opt/multitek-pm`;
+pengembangan dilakukan pada salinan Git yang terpisah.
+<!-- MULTITEK-PM-HANDBOOK:END -->
