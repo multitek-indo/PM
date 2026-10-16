@@ -3,14 +3,14 @@
 <title>{% block title %}Multitek Smart Maintenance{% endblock %}</title>
 <link rel="stylesheet" href="{% static 'pm.css' %}?v=020"><script src="{% static 'pm-ui.js' %}?v=020" defer></script>{% block extrahead %}{% endblock %}</head>
 <body><a class="skip-link" href="#main-content">Lewati navigasi</a>
-<aside class="sidebar"><div class="brand"><span class="brand-mark" aria-hidden="true">M</span><div>MULTITEK<small>SMART MAINTENANCE</small></div></div>
+<aside class="sidebar"><div class="brand"><span class="brand-mark" aria-hidden="true">{{ pm_company_initial }}</span><div>{{ pm_company_name }}<small>SMART MAINTENANCE</small></div></div>
 <div class="nav-label">RUANG KERJA</div><nav class="nav" aria-label="Navigasi utama">
 <a href="{% url 'dashboard' %}" {% if request.resolver_match.url_name == 'dashboard' %}aria-current="page"{% endif %}><span class="nav-symbol" aria-hidden="true">&#9638;</span>Ringkasan</a>
 <a href="{% url 'machines' %}" {% if 'machine' in request.resolver_match.url_name %}aria-current="page"{% endif %}><span class="nav-symbol" aria-hidden="true">&#9881;</span>Master mesin</a>
 <a href="{% url 'orders' %}" {% if 'order' in request.resolver_match.url_name %}aria-current="page"{% endif %}><span class="nav-symbol" aria-hidden="true">&#9745;</span>Work order</a>
 {% if user.is_staff %}<a href="{% url 'admin:index' %}"><span class="nav-symbol" aria-hidden="true">&#9635;</span>Administrasi</a>{% endif %}
 <a href="{% url 'password_change' %}" {% if request.resolver_match.url_name == 'password_change' %}aria-current="page"{% endif %}><span class="nav-symbol" aria-hidden="true">&#9672;</span>Ganti password</a></nav>
-<div class="foot"><span class="version-chip">VERSI 0.2</span><p>Data terpusat.<br>Pekerjaan dapat ditelusuri.</p><span>Multitek Indonesia &middot; WIB</span></div></aside>
-<main class="main" id="main-content"><header class="top"><div><div class="eyebrow">Maintenance operations</div><span class="muted">Multitek Indonesia</span></div><div class="user-area"><span class="user-avatar" aria-hidden="true">{{ user.get_username|slice:':1'|upper }}</span><div><strong>{{ user.get_username }}</strong><div class="muted">{% if is_supervisor %}Supervisor{% else %}Teknisi{% endif %}</div></div><form class="logout" method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="linkbutton">Keluar</button></form></div></header>
+<div class="foot"><span class="version-chip">VERSI {{ pm_app_version }}</span><p>Data terpusat.<br>Pekerjaan dapat ditelusuri.</p><span>{{ pm_company_name }} &middot; WIB</span></div></aside>
+<main class="main" id="main-content"><header class="top"><div><div class="eyebrow">Maintenance operations</div><span class="muted">{{ pm_company_name }}</span></div><div class="user-area"><span class="user-avatar" aria-hidden="true">{{ user.get_username|slice:':1'|upper }}</span><div><strong>{{ user.get_username }}</strong><div class="muted">{% if is_supervisor %}Supervisor{% else %}Teknisi{% endif %}</div></div><form class="logout" method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="linkbutton">Keluar</button></form></div></header>
 {% for message in messages %}<div role="status" class="notice {% if message.tags == 'error' %}error{% endif %}">{{ message }}</div>{% endfor %}
-{% block content %}{% endblock %}<footer class="page-foot">Multitek PM v0.2 &middot; Pemeriksaan lapangan tetap mengikuti manual mesin dan SOP keselamatan.</footer></main></body></html>
+{% block content %}{% endblock %}<footer class="page-foot">Multitek PM v{{ pm_app_version }} &middot; Pemeriksaan lapangan tetap mengikuti manual mesin dan SOP keselamatan.</footer></main></body></html>

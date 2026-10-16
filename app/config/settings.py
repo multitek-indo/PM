@@ -56,3 +56,10 @@ if SESSION_COOKIE_SECURE:
     # Docker checks this endpoint over loopback HTTP; it only runs SELECT 1.
     SECURE_REDIRECT_EXEMPT = [r'^healthz$']
 # END MULTITEK PM CLOUDFLARE HTTPS v1
+
+# BEGIN PM VERSION AND COMPANY IDENTITY 0.3
+# Existing database, network, security, clock and maintenance settings stay intact.
+from .version import APP_VERSION
+INSTALLED_APPS = [*INSTALLED_APPS, 'branding.apps.BrandingConfig']
+TEMPLATES[0]['OPTIONS']['context_processors'].append('branding.context_processors.company_identity')
+# END PM VERSION AND COMPANY IDENTITY 0.3

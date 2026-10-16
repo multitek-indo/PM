@@ -86,4 +86,5 @@ class Release020Tests(TestCase):
         self.client.force_login(self.admin)
         self.assertEqual(self.client.get('/admin/maintenance/workorder/add/').status_code,403)
     def test_health_version(self):
-        self.assertEqual(self.client.get('/healthz').json()['version'],'0.2.0')
+        from django.conf import settings
+        self.assertEqual(self.client.get('/healthz').json()['version'],settings.APP_VERSION)

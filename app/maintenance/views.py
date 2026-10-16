@@ -25,7 +25,7 @@ def healthz(request):
     try:
         with connection.cursor() as c: c.execute('SELECT 1'); c.fetchone()
     except DatabaseError: return JsonResponse({'status':'database_unavailable'},status=503)
-    return JsonResponse({'status':'ok','service':'multitek-pm','version':'0.2.0'})
+    return JsonResponse({'status':'ok','service':'multitek-pm','version':settings.APP_VERSION})
 
 @login_required
 def dashboard(request):
