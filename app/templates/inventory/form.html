@@ -1,0 +1,9 @@
+{% extends 'base.html' %}{% load static %}
+{% block title %}{{ title }} - Multitek PM{% endblock %}
+{% block extrahead %}<link rel="stylesheet" href="{% static 'pm-inventory.css' %}?v=040">{% endblock %}
+{% block content %}<section class="inv-head"><div><div class="eyebrow">Stok sparepart</div><h1>{{ title }}</h1><p>{{ subtitle }}</p></div></section>
+<section class="card inv-form-card"><form method="post">{% csrf_token %}
+{% for err in form.non_field_errors %}<p class="notice error">{{ err }}</p>{% endfor %}
+{% for field in form %}<div class="inv-field"><label for="{{ field.id_for_label }}">{{ field.label }} {% if field.field.required %}<span aria-hidden="true">*</span>{% endif %}</label>{{ field }}{% if field.help_text %}<small>{{ field.help_text }}</small>{% endif %}{% for err in field.errors %}<p class="inv-error" role="alert">{{ err }}</p>{% endfor %}</div>{% endfor %}
+<div class="inv-actions"><button type="submit" class="button">{{ submit_label }}</button><a class="button secondary" href="{% url back_url %}">Kembali</a></div></form></section>
+{% endblock %}

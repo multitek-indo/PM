@@ -68,3 +68,7 @@ TEMPLATES[0]['OPTIONS']['context_processors'].append('branding.context_processor
 INSTALLED_APPS.append('spareparts.apps.SparepartsConfig')
 SPAREPART_STORAGE_DIR = '/var/pm-spareparts'
 # END SPAREPART PHOTO 0.3.1
+
+# BEGIN INVENTORY 0.4.0
+INSTALLED_APPS.append('inventory.apps.InventoryConfig')
+# END INVENTORY 0.4.0

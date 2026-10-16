@@ -1,0 +1,6 @@
+{% extends 'base.html' %}{% load static %}
+{% block title %}Stock opname - Multitek PM{% endblock %}
+{% block extrahead %}<link rel="stylesheet" href="{% static 'pm-inventory.css' %}?v=040">{% endblock %}
+{% block content %}<section class="inv-head"><div><div class="eyebrow">Pemeriksaan persediaan</div><h1>Stock opname fisik</h1><p>Hitung barang langsung dari HP, lalu posting selisih ke buku stok.</p></div><div class="inv-actions"><a class="button" href="{% url 'inventory_stocktake_new' %}">+ Buat opname</a><a class="button secondary" href="{% url 'inventory_overview' %}">Stok</a></div></section>
+<section class="card"><h2>Riwayat sesi opname</h2><div class="inv-count-list">{% for s in sessions %}<a class="inv-listline" href="{% url 'inventory_stocktake_detail' s.pk %}"><div><strong>#{{ s.pk }} · {{ s.title }}</strong><small>{{ s.created_by }} · {{ s.created_at|date:'d M Y H:i' }}</small></div><span class="inv-indicator {% if s.status == 'draft' %}inv-low{% else %}inv-ok{% endif %}">{{ s.get_status_display }}</span></a>{% empty %}<p class="muted">Belum ada stock opname.</p>{% endfor %}</div></section>
+{% endblock %}

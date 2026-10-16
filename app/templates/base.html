@@ -8,6 +8,7 @@
 <a href="{% url 'dashboard' %}" {% if request.resolver_match.url_name == 'dashboard' %}aria-current="page"{% endif %}><span class="nav-symbol" aria-hidden="true">&#9638;</span>Ringkasan</a>
 <a href="{% url 'machines' %}" {% if 'machine' in request.resolver_match.url_name %}aria-current="page"{% endif %}><span class="nav-symbol" aria-hidden="true">&#9881;</span>Master mesin</a>
 <a href="{% url 'orders' %}" {% if 'order' in request.resolver_match.url_name %}aria-current="page"{% endif %}><span class="nav-symbol" aria-hidden="true">&#9745;</span>Work order</a>
+<a href="{% url 'inventory_overview' %}" {% if request.resolver_match.url_name|slice:':10' == 'inventory_' %}aria-current="page"{% endif %}><span class="nav-symbol" aria-hidden="true">&#9645;</span>Stok sparepart</a>
 {% if user.is_staff %}<a href="{% url 'admin:index' %}"><span class="nav-symbol" aria-hidden="true">&#9635;</span>Administrasi</a>{% endif %}
 <a href="{% url 'password_change' %}" {% if request.resolver_match.url_name == 'password_change' %}aria-current="page"{% endif %}><span class="nav-symbol" aria-hidden="true">&#9672;</span>Ganti password</a></nav>
 <div class="foot"><span class="version-chip">VERSI {{ pm_app_version }}</span><p>Data terpusat.<br>Pekerjaan dapat ditelusuri.</p><span>{{ pm_company_name }} &middot; WIB</span></div></aside>

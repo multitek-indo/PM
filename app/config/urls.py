@@ -32,3 +32,23 @@ urlpatterns += [
     path('spareparts/<int:photo_id>/photo/', spareparts_views.view_photo, name='sparepart_view_photo'),
 ]
 # END SPAREPART PHOTO 0.3.1
+
+# BEGIN INVENTORY 0.4.0
+from inventory import views as inventory_views
+urlpatterns += [
+    path('inventory/', inventory_views.overview, name='inventory_overview'),
+    path('inventory/parts/new/', inventory_views.add_part, name='inventory_add_part'),
+    path('inventory/parts/<int:pk>/edit/', inventory_views.edit_part, name='inventory_edit_part'),
+    path('inventory/movement/', inventory_views.movement, name='inventory_movement'),
+    path('inventory/requests/', inventory_views.requests, name='inventory_requests'),
+    path('inventory/requests/new/', inventory_views.request_part, name='inventory_request_new'),
+    path('inventory/requests/<int:pk>/decide/', inventory_views.request_decide, name='inventory_request_decide'),
+    path('inventory/requests/<int:pk>/issue/', inventory_views.request_issue, name='inventory_request_issue'),
+    path('inventory/opname/', inventory_views.stocktakes, name='inventory_stocktakes'),
+    path('inventory/opname/new/', inventory_views.stocktake_new, name='inventory_stocktake_new'),
+    path('inventory/opname/<int:pk>/', inventory_views.stocktake_detail, name='inventory_stocktake_detail'),
+    path('inventory/opname/<int:pk>/count/<int:line_id>/', inventory_views.stocktake_count, name='inventory_stocktake_count'),
+    path('inventory/opname/<int:pk>/post/', inventory_views.stocktake_post, name='inventory_stocktake_post'),
+    path('inventory/opname/<int:pk>/cancel/', inventory_views.stocktake_cancel, name='inventory_stocktake_cancel'),
+]
+# END INVENTORY 0.4.0
