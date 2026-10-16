@@ -143,4 +143,6 @@ networks:
   pm: {}
 volumes:
   pgdata: {}
-  packages: {}
+  packages:
+    # Versioned dependency volume. The previous volume stays available for rollback.
+    name: ${PM_PACKAGES_VOLUME:-multitek-pm_packages}

@@ -91,3 +91,8 @@ Mulai dari **[Buku panduan Multitek PM](docs/handbook/README.md)**.
 Dokumentasi bukan auto-deploy. Kode produksi tetap di `/opt/multitek-pm`;
 pengembangan dilakukan pada salinan Git yang terpisah.
 <!-- MULTITEK-PM-HANDBOOK:END -->
+
+## Pembaruan 0.2
+
+Tema biru muda, administrasi kartu, jam WIB, dan impor Excel tersedia.
+Panduan: [Rilis 0.2](docs/releases/0.2.md).

@@ -8,6 +8,11 @@ class MachineAdmin(admin.ModelAdmin):
     search_fields = ('code','name','serial','line')
     readonly_fields = ('uid','created_at')
     list_per_page = 50
+    fieldsets = (
+        ('Identitas mesin', {'fields':('code','name','category','manufacturer','model','serial')}),
+        ('Lokasi & pemeliharaan', {'fields':('site','line','active','notes')}),
+        ('Informasi sistem', {'fields':('uid','created_at'),'classes':('collapse',)}),
+    )
 
 @admin.register(Plan)
 class PlanAdmin(admin.ModelAdmin):
@@ -16,6 +21,12 @@ class PlanAdmin(admin.ModelAdmin):
     search_fields = ('machine__code','title')
     autocomplete_fields = ('machine','assigned_to')
     list_select_related = ('machine','assigned_to')
+    list_per_page = 50
+    fieldsets = (
+        ('Mesin & pekerjaan', {'fields':('machine','title','active')}),
+        ('Waktu & penugasan', {'fields':('interval_days','next_due','assigned_to')}),
+        ('Checklist pemeriksaan', {'fields':('checklist',), 'description':'Satu pemeriksaan per baris. Ikuti manual mesin dan SOP keselamatan.'}),
+    )
 
 class ReadOnlyAdmin(admin.ModelAdmin):
     def has_add_permission(self,request): return False

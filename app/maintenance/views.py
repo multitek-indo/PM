@@ -16,7 +16,8 @@ from django.views.decorators.http import require_GET
 from .models import Machine, Plan, SchedulerState
 from .services import supervisor, visible_orders, submit_order, review_order, assign_order
 from .forms import ChecklistForm, ReviewForm, ImportForm, AssignmentForm
-from .importing import import_csv, safe_cell, FIELDS
+from .importing import import_csv, import_excel, safe_cell, FIELDS
+from .tabular import template_xlsx
 
 def context(request,**kw): return {'is_supervisor':supervisor(request.user),**kw}
 
@@ -24,7 +25,7 @@ def healthz(request):
     try:
         with connection.cursor() as c: c.execute('SELECT 1'); c.fetchone()
     except DatabaseError: return JsonResponse({'status':'database_unavailable'},status=503)
-    return JsonResponse({'status':'ok','service':'multitek-pm','version':'0.1.0'})
+    return JsonResponse({'status':'ok','service':'multitek-pm','version':'0.2.0'})
 
 @login_required
 def dashboard(request):
@@ -34,7 +35,7 @@ def dashboard(request):
     ontime=due.filter(status='done',submitted_at__date__lte=F('due_date')).count()
     total=due.count()
     heartbeat=SchedulerState.objects.filter(name='pm').first()
-    return render(request,'dashboard.html',context(request,today=today,machine_count=Machine.objects.filter(active=True).count(),plan_count=Plan.objects.filter(active=True).count(),open_count=qs.filter(status='open').count(),overdue_count=qs.exclude(status='done').filter(due_date__lt=today).count(),review_count=qs.filter(status='review').count(),done_month=qs.filter(status='done',approved_at__date__gte=month).count(),due_count=total,compliance=round(100*ontime/total,1) if total else None,heartbeat=heartbeat,scheduler_ok=bool(heartbeat and heartbeat.last_ok and heartbeat.last_ok>timezone.now()-timedelta(minutes=15)),recent=qs.exclude(status='done')[:10]))
+    return render(request,'dashboard.html',context(request,today=today,clock_epoch_ms=int(timezone.now().timestamp()*1000),machine_count=Machine.objects.filter(active=True).count(),plan_count=Plan.objects.filter(active=True).count(),open_count=qs.filter(status='open').count(),overdue_count=qs.exclude(status='done').filter(due_date__lt=today).count(),review_count=qs.filter(status='review').count(),done_month=qs.filter(status='done',approved_at__date__gte=month).count(),due_count=total,compliance=round(100*ontime/total,1) if total else None,heartbeat=heartbeat,scheduler_ok=bool(heartbeat and heartbeat.last_ok and heartbeat.last_ok>timezone.now()-timedelta(minutes=15)),recent=qs.exclude(status='done')[:10]))
 
 @login_required
 def machines(request):
@@ -113,11 +114,15 @@ def import_machines(request):
     form=ImportForm(request.POST or None,request.FILES or None)
     if request.method=='POST' and form.is_valid():
         try:
-            count=import_csv(form.cleaned_data['file'].read(2*1024*1024+1),request.user)
+            upload=form.cleaned_data['file']
+            if upload.name.lower().endswith('.xlsx'):
+                count=import_excel(upload.read(5*1024*1024+1),request.user,form.cleaned_data.get('sheet_name',''))
+            else:
+                count=import_csv(upload.read(2*1024*1024+1),request.user)
             messages.success(request,f'{count} mesin berhasil ditambahkan. Data lama tidak ditimpa.')
             return redirect('machines')
         except (ValidationError,IntegrityError,csv.Error) as exc:
-            messages.error(request,'; '.join(exc.messages) if isinstance(exc,ValidationError) else 'CSV tidak valid atau kode mesin berbenturan. Tidak ada data impor yang disimpan.')
+            messages.error(request,'; '.join(exc.messages) if isinstance(exc,ValidationError) else 'File tidak valid atau kode mesin berbenturan. Tidak ada data impor yang disimpan.')
     return render(request,'import.html',context(request,form=form))
 
 @login_required
@@ -139,4 +144,21 @@ def export_orders(request):
     # Bounded pilot export; show limit in UI rather than silently implying full history.
     for w in visible_orders(request.user).order_by('-due_date','-id')[:20000].iterator(chunk_size=250):
         writer.writerow([safe_cell(x) for x in [w.pk,w.plan.machine.code,w.plan.machine.site,w.plan.machine.line,w.title,w.due_date,w.get_status_display(),w.assigned_to or '',w.submitted_at or '',w.approved_at or '',w.notes]])
+    return response
+
+
+@login_required
+@require_GET
+def machine_template_excel(request):
+    if not supervisor(request.user): raise PermissionDenied
+    response=HttpResponse(template_xlsx(),content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    response['Content-Disposition']='attachment; filename="template-mesin-multitek.xlsx"'
+    response['Cache-Control']='private, no-store'
+    return response
+
+@login_required
+@require_GET
+def server_time(request):
+    response=JsonResponse({'epoch_ms':int(timezone.now().timestamp()*1000),'timezone':'Asia/Jakarta'})
+    response['Cache-Control']='private, no-store, max-age=0'
     return response

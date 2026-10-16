@@ -1,0 +1,7 @@
+{% extends "admin/base.html" %}{% load static %}
+{% block title %}{{ title }} | Multitek PM{% endblock %}
+{% block dark-mode-vars %}{% endblock %}
+{% block extrastyle %}{{ block.super }}<link rel="stylesheet" href="{% static 'pm-admin.css' %}?v=020"><script src="{% static 'pm-ui.js' %}?v=020" defer></script>{% endblock %}
+{% block branding %}<div id="site-name"><a href="{% url 'admin:index' %}" class="pm-admin-brand"><span class="pm-brand-mark">M</span><span>MULTITEK <small>SMART MAINTENANCE / ADMINISTRASI</small></span></a></div>{% endblock %}
+{% block nav-global %}<a href="{% url 'dashboard' %}" class="pm-back-dashboard">Kembali ke dashboard &rarr;</a>{% endblock %}
+{% block userlinks %}{% if user.is_active and user.is_staff %}<span class="pm-user-name">{{ user.get_username }}</span> / {% endif %}{% if user.has_usable_password %}<a href="{% url 'admin:password_change' %}">Ganti password</a> / {% endif %}<form id="logout-form" method="post" action="{% url 'admin:logout' %}">{% csrf_token %}<button type="submit">Keluar</button></form>{% endblock %}

@@ -298,3 +298,7 @@ Rujukan perilaku: [models](../../app/maintenance/models.py),
 [forms](../../app/maintenance/forms.py), [impor](../../app/maintenance/importing.py),
 dan [template](../../app/templates/base.html). Untuk masalah teknis lanjutan,
 lihat [troubleshooting](08-TROUBLESHOOTING.md).
+
+## Tambahan versi 0.2
+
+Menu impor kini menerima .xlsx langsung. Lihat [panduan rilis 0.2](../releases/0.2.md) untuk langkah dan batas file.

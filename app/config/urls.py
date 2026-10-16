@@ -4,8 +4,11 @@ from django.urls import path
 from maintenance import views
 admin.site.site_header = 'Multitek PM - Administrasi'
 admin.site.site_title = 'Multitek PM'
-admin.site.index_title = 'Master mesin, jadwal dan pengguna'
+admin.site.index_title = 'Pusat administrasi'
+admin.site.index_template = 'admin/pm_index.html'
 urlpatterns = [
+    path('api/time/', views.server_time, name='server_time'),
+    path('machines/template.xlsx', views.machine_template_excel, name='machine_template_excel'),
     path('healthz', views.healthz, name='healthz'),
     path('login/', auth_views.LoginView.as_view(template_name='registration/login.html'), name='login'),
     path('logout/', auth_views.LogoutView.as_view(), name='logout'),

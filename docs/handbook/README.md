@@ -57,3 +57,7 @@ source yang mendasari edisi ini, bukan daftar hash yang harus diubah otomatis.
 
 Buku ini memakai istilah menu dari template baseline: **Ringkasan**, **Master
 mesin**, **Work order**, **Administrasi**, **Ganti password**, dan **Keluar**.
+
+## Pembaruan setelah baseline
+
+[Rilis 0.2: UI, jam WIB, dan Excel](../releases/0.2.md) memperbarui panduan impor CSV lama.
