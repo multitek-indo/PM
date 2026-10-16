@@ -65,3 +65,10 @@
 @media(max-width:430px){.inv-metrics{grid-template-columns:1fr}.inv-part{padding:13px}.inv-metrics article{min-height:85px}.inv-actions>.button{width:100%;text-align:center}.inv-search>div{flex-direction:column}.inv-search .button{width:100%}}
 
 .inv-post textarea{width:100%;display:block;min-height:70px;padding:10px;border:1px solid #a5d2f0;border-radius:9px;box-sizing:border-box;margin:8px 0;font:inherit}
+
+/* v0.4.1: search only on Barang Masuk/Keluar; existing stock logic unchanged. */
+.inv-part-picker{display:grid;gap:8px;min-width:0}
+.inv-part-search-label{font-size:13px;font-weight:650;color:#245b88}
+.inv-part-results{font-size:12px;color:#457592;line-height:1.45}
+.inv-part-picker input[type="search"]{width:100%;max-width:100%}
+.inv-part-picker select{width:100%;max-width:100%}

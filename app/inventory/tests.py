@@ -1,6 +1,7 @@
 """Run together with maintenance, branding, spareparts on isolated SQLite."""
 from decimal import Decimal
 from django.contrib.auth import get_user_model
+from django.conf import settings
 from django.contrib.auth.models import Group
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import IntegrityError
@@ -196,7 +197,7 @@ class InventoryTests(TestCase):
         with self.assertRaises(PermissionDenied):post_stocktake(op.pk,self.tech)
 
     def test_health_version_040(self):
-        self.assertEqual(self.client.get('/healthz').json()['version'],'0.4.0')
+        self.assertEqual(self.client.get('/healthz').json()['version'], settings.APP_VERSION)
 
     def test_sidebar_only_adds_inventory(self):
         self.client.force_login(self.tech)
