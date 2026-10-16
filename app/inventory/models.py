@@ -57,6 +57,7 @@ class PartRequest(models.Model):
                                    on_delete=models.PROTECT, related_name='sparepart_decisions')
     decided_at = models.DateTimeField(null=True, blank=True)
     manager_note = models.CharField(max_length=600, blank=True)
+    approval_route = models.CharField('Jalur persetujuan', max_length=12, choices=[('stock_admin','Admin sparepart'),('manager','Manager sparepart')], default='stock_admin')
     fulfilled_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                                      on_delete=models.PROTECT, related_name='sparepart_fulfillments')
     fulfilled_at = models.DateTimeField(null=True, blank=True)
@@ -66,6 +67,7 @@ class PartRequest(models.Model):
         verbose_name = 'Permintaan sparepart'
         verbose_name_plural = 'Permintaan sparepart'
         constraints = [models.CheckConstraint(condition=Q(quantity__gt=0), name='inv_request_positive')]
+        permissions = [('approve_admin_request', 'Menyetujui permintaan dari admin sparepart')]
 
 
 class Stocktake(models.Model):
@@ -122,6 +124,7 @@ class StockMovement(models.Model):
     note = models.CharField(max_length=600, blank=True)
     request = models.ForeignKey(PartRequest, on_delete=models.PROTECT, blank=True, null=True)
     stocktake = models.ForeignKey(Stocktake, on_delete=models.PROTECT, blank=True, null=True)
+    import_batch = models.ForeignKey('StockImportBatch', on_delete=models.PROTECT, blank=True, null=True, related_name='movements')
     actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -131,3 +134,16 @@ class StockMovement(models.Model):
         verbose_name_plural = 'Mutasi stok'
         constraints = [models.CheckConstraint(condition=~Q(qty_delta=0), name='inv_delta_nonzero'),
                        models.CheckConstraint(condition=Q(after_qty__gte=0), name='inv_after_nonnegative')]
+
+
+class StockImportBatch(models.Model):
+    fingerprint = models.CharField('SHA256 isi file', max_length=64, unique=True, editable=False)
+    filename = models.CharField('Nama sumber', max_length=200)
+    row_count = models.PositiveIntegerField(default=0)
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at', '-pk']
+        verbose_name = 'Impor mutasi'
+        verbose_name_plural = 'Impor mutasi'

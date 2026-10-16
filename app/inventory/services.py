@@ -5,7 +5,7 @@ from django.db import transaction
 from django.db.models import Max
 from django.utils import timezone
 from maintenance.services import supervisor, visible_orders
-from .models import Part, PartRequest, StockMovement, Stocktake, StocktakeLine, LIMIT
+from .models import Part, PartRequest, StockMovement, Stocktake, StocktakeLine, StockImportBatch, LIMIT
 
 
 def can_manage(user):
@@ -18,9 +18,44 @@ def ensure_manager(user):
         raise PermissionDenied('Hanya supervisor atau pengelola stok yang dapat mengubah persediaan.')
 
 
-def _move(part, actor, kind, delta, note='', request=None, stocktake=None):
+def is_stock_admin(user):
+    return bool(user.is_authenticated and user.is_active and
+                (user.is_superuser or user.groups.filter(name='Pengelola Stok Sparepart').exists()))
+
+
+def is_sparepart_manager(user):
+    return bool(user.is_authenticated and user.is_active and
+                (user.is_superuser or user.has_perm('inventory.approve_admin_request')))
+
+
+def route_for_requester(user):
+    # Snapshot requester tier: group changes later never reroute pending requests.
+    return 'manager' if can_manage(user) or is_sparepart_manager(user) else 'stock_admin'
+
+
+def can_approve_request(user, req):
+    if not user.is_authenticated or not user.is_active or user.pk == req.requested_by_id:
+        return False
+    return is_sparepart_manager(user) if req.approval_route == 'manager' else is_stock_admin(user)
+
+
+def whole(value, zero=False):
+    try:
+        n = Decimal(str(value))
+    except (ArithmeticError, ValueError, TypeError):
+        raise ValidationError('Jumlah harus bilangan bulat.')
+    if not n.is_finite() or n != n.to_integral_value():
+        raise ValidationError('Jumlah harus bilangan bulat tanpa pecahan.')
+    if n < 0 or (n == 0 and not zero) or n > Decimal('999999999'):
+        raise ValidationError('Jumlah harus dalam batas 1-999999999 (nol hanya untuk saldo/minimum).')
+    return n
+
+
+def _move(part, actor, kind, delta, note='', request=None, stocktake=None, import_batch=None):
     """Call inside transaction.atomic after obtaining select_for_update on Part."""
-    before = part.current_qty
+    before = whole(part.current_qty, zero=True)
+    signed = whole(abs(delta))
+    delta = signed if delta > 0 else -signed
     after = before + delta
     if after < 0:
         raise ValidationError('Stok tidak cukup. Pengeluaran dibatalkan.')
@@ -32,14 +67,15 @@ def _move(part, actor, kind, delta, note='', request=None, stocktake=None):
     part.save(update_fields=['current_qty', 'updated_at'])
     return StockMovement.objects.create(part=part, kind=kind, qty_delta=delta,
                                         before_qty=before, after_qty=after, note=note,
-                                        request=request, stocktake=stocktake, actor=actor)
+                                        request=request, stocktake=stocktake, import_batch=import_batch, actor=actor)
 
 
 @transaction.atomic
 def move_stock(part_id, kind, amount, actor, note):
     ensure_manager(actor)
-    if kind not in ('receive', 'issue') or amount <= 0 or not amount.is_finite():
-        raise ValidationError('Jenis atau jumlah mutasi tidak valid.')
+    if kind not in ('receive', 'issue'):
+        raise ValidationError('Jenis mutasi tidak valid.')
+    amount = whole(amount)
     part = Part.objects.select_for_update().get(pk=part_id, active=True)
     return _move(part, actor, kind, amount if kind == 'receive' else -amount, note)
 
@@ -53,6 +89,7 @@ def make_request(form, actor):
         raise PermissionDenied('Anda tidak berhak memilih work order ini.')
     item = form.save(commit=False)
     item.requested_by = actor
+    item.approval_route = route_for_requester(actor)
     item.status = 'pending'
     item.save()
     return item
@@ -60,8 +97,9 @@ def make_request(form, actor):
 
 @transaction.atomic
 def review_request(request_id, actor, action, note):
-    ensure_manager(actor)
     obj = PartRequest.objects.select_for_update().get(pk=request_id)
+    if not can_approve_request(actor, obj):
+        raise PermissionDenied('Anda tidak berhak memutuskan permintaan ini.')
     if obj.status != 'pending' or action not in ('approve', 'reject'):
         raise ValidationError('Permintaan tidak lagi menunggu keputusan.')
     if action == 'reject' and not note.strip():
@@ -83,7 +121,7 @@ def fulfill_request(request_id, actor):
     part = Part.objects.select_for_update().get(pk=obj.part_id)
     if not part.active:
         raise ValidationError('Sparepart sudah nonaktif.')
-    _move(part, actor, 'request', -obj.quantity, f'Permintaan #{obj.pk}', request=obj)
+    _move(part, actor, 'request', -whole(obj.quantity), f'Permintaan #{obj.pk}', request=obj)
     obj.status = 'fulfilled'
     obj.fulfilled_by = actor
     obj.fulfilled_at = timezone.now()
@@ -119,8 +157,9 @@ def start_stocktake(title, actor):
 def count_line(stocktake_id, line_id, quantity, actor):
     ensure_manager(actor)
     opname = Stocktake.objects.select_for_update().get(pk=stocktake_id)
-    if opname.status != 'draft' or quantity < 0 or not quantity.is_finite():
-        raise ValidationError('Opname telah diposting atau jumlah tidak valid.')
+    if opname.status != 'draft':
+        raise ValidationError('Opname telah diposting.')
+    quantity = whole(quantity, zero=True)
     line = StocktakeLine.objects.select_for_update().get(pk=line_id, stocktake=opname)
     line.counted_qty = quantity
     line.updated_by = actor
@@ -149,7 +188,7 @@ def post_stocktake(stocktake_id, actor):
             raise ValidationError('Stok berubah setelah opname dimulai. Catatan fisik disimpan, tetapi perlu opname baru sebelum koreksi.')
     changes = 0
     for line in lines:
-        delta = line.counted_qty - line.book_qty
+        delta = whole(line.counted_qty, zero=True) - whole(line.book_qty, zero=True)
         if delta:
             _move(parts[line.part_id], actor, 'opname', delta,
                   f'Opname #{opname.pk}: {opname.title}', stocktake=opname)
@@ -176,3 +215,32 @@ def cancel_stocktake(stocktake_id, actor, reason):
     opname.cancel_note = reason
     opname.save(update_fields=['status','cancelled_by','cancelled_at','cancel_note'])
     return opname
+
+
+@transaction.atomic
+def import_stock_rows(rows, fingerprint, filename, actor):
+    """Each file is applied exactly once, all rows or none, in stable lock order."""
+    ensure_manager(actor)
+    if StockImportBatch.objects.filter(fingerprint=fingerprint).exists():
+        raise ValidationError('File identik sudah pernah diimpor. Tidak ada stok yang diubah.')
+    codes = {row['sku'] for row in rows}
+    parts = list(Part.objects.select_for_update().filter(sku__in=codes, active=True).order_by('pk'))
+    by_sku = {p.sku: p for p in parts}
+    unknown = sorted(codes - set(by_sku))
+    if unknown:
+        raise ValidationError('Kode sparepart tidak ditemukan/aktif: ' + ', '.join(unknown[:8]))
+    balances = {sku: whole(p.current_qty, zero=True) for sku, p in by_sku.items()}
+    for i, row in enumerate(rows, start=2):
+        qty = whole(row['quantity'])
+        if row['kind'] not in ('receive','issue'):
+            raise ValidationError('Jenis mutasi tidak valid pada baris %d.' % i)
+        balances[row['sku']] += qty if row['kind']=='receive' else -qty
+        if not 0 <= balances[row['sku']] <= Decimal('999999999'):
+            raise ValidationError('Baris %d: stok keluar melebihi saldo atau melebihi batas.' % i)
+    batch = StockImportBatch.objects.create(fingerprint=fingerprint, filename=filename[:200],
+                                            row_count=len(rows), actor=actor)
+    for row in rows:
+        qty = whole(row['quantity'])
+        _move(by_sku[row['sku']], actor, row['kind'], qty if row['kind']=='receive' else -qty,
+              row['note'], import_batch=batch)
+    return batch

@@ -1,0 +1,5 @@
+{% extends 'base.html' %}
+{% block title %}Hapus mesin - Multitek PM{% endblock %}
+{% block content %}<section class="card" style="max-width:780px"><h1>Konfirmasi hapus master mesin</h1>
+<p><strong>{{ machine.code }}</strong> - {{ machine.name }}</p><div class="notice warning">Mesin yang terhubung ke jadwal PM / riwayat pekerjaan tidak dapat dihapus. Nonaktifkan melalui Edit master agar riwayat tetap terlindungi.</div>
+<form method="post">{% csrf_token %}<label for="confirm-code">Ketik ulang kode mesin untuk menghapus</label><input id="confirm-code" name="confirmation" required autocomplete="off" placeholder="{{ machine.code }}" maxlength="64"><div class="actions"><button type="submit" class="button">Konfirmasi hapus</button><a class="button secondary" href="{% url 'machine_detail' machine.uid %}">Batal</a></div></form></section>{% endblock %}

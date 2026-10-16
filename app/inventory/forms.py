@@ -13,6 +13,8 @@ def positive_number(value):
 
 
 class PartForm(forms.ModelForm):
+    min_qty = forms.IntegerField(label='Stok minimum', min_value=0, max_value=999999999,
+                                 widget=forms.NumberInput(attrs={'step':'1','inputmode':'numeric'}))
     class Meta:
         model = Part
         fields = ['sku', 'name', 'machine_type', 'unit', 'location', 'min_qty', 'active']
@@ -32,7 +34,8 @@ class PartForm(forms.ModelForm):
 class MovementForm(forms.Form):
     part = forms.ModelChoiceField(queryset=Part.objects.filter(active=True), label='Sparepart')
     kind = forms.ChoiceField(choices=[('receive', 'Barang masuk'), ('issue', 'Barang keluar')], label='Jenis')
-    quantity = forms.DecimalField(label='Jumlah', max_digits=12, decimal_places=3, min_value=Decimal('0.001'))
+    quantity = forms.IntegerField(label='Jumlah', min_value=1, max_value=999999999,
+                                  widget=forms.NumberInput(attrs={'step':'1','inputmode':'numeric'}))
     note = forms.CharField(label='Referensi / alasan', max_length=600, widget=forms.Textarea(attrs={'rows':2}))
 
     def clean_note(self):
@@ -43,6 +46,8 @@ class MovementForm(forms.Form):
 
 
 class RequestForm(forms.ModelForm):
+    quantity = forms.IntegerField(label='Jumlah', min_value=1, max_value=999999999,
+                                  widget=forms.NumberInput(attrs={'step':'1','inputmode':'numeric'}))
     class Meta:
         model = PartRequest
         fields = ['part', 'quantity', 'order', 'note']
@@ -82,5 +87,5 @@ class StocktakeForm(forms.ModelForm):
 
 
 class CountForm(forms.Form):
-    counted_qty = forms.DecimalField(label='Stok fisik', max_digits=12, decimal_places=3,
-                                     min_value=Decimal('0.000'))
+    counted_qty = forms.IntegerField(label='Stok fisik', min_value=0, max_value=999999999,
+                                     widget=forms.NumberInput(attrs={'step':'1','inputmode':'numeric'}))

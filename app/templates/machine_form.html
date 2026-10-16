@@ -1,0 +1,5 @@
+{% extends 'base.html' %}
+{% block title %}{{ title }} - Multitek PM{% endblock %}
+{% block content %}<section class="card" style="max-width:900px"><h1>{{ title }}</h1><p class="muted">Hanya field master mesin. Jadwal PM dan work order tidak diubah.</p><form method="post">{% csrf_token %}{{ form.non_field_errors }}
+{% for field in form %}<p><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% for error in field.errors %}<span class="notice error">{{ error }}</span>{% endfor %}</p>{% endfor %}
+<div class="actions"><button type="submit" class="button">{{ submit_label }}</button><a class="button secondary" href="{% url 'machines' %}">Batal</a></div></form></section>{% endblock %}

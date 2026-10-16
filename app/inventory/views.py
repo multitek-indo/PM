@@ -5,18 +5,20 @@ from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
 from django.db import IntegrityError
 from django.db.models import F, Q, Count
-from django.http import HttpResponseNotAllowed
+from django.http import HttpResponse, HttpResponseNotAllowed
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_GET
 from maintenance.services import visible_orders
 from .forms import PartForm, MovementForm, RequestForm, DecisionForm, StocktakeForm, CountForm
 from .models import Part, PartRequest, StockMovement, Stocktake, StocktakeLine
 from .services import (can_manage, move_stock, make_request, review_request,
-                       fulfill_request, start_stocktake, count_line, post_stocktake, cancel_stocktake)
+                       fulfill_request, start_stocktake, count_line, post_stocktake, cancel_stocktake,
+                       is_stock_admin, is_sparepart_manager, can_approve_request, import_stock_rows)
+from .importing import parse_uploaded, HEADERS
 
 
 def page_context(request, **kwargs):
-    return {'can_manage_stock': can_manage(request.user), **kwargs}
+    return {'can_manage_stock': can_manage(request.user), 'can_review_admin': is_sparepart_manager(request.user), **kwargs}
 
 
 def active_user(view):
@@ -42,8 +44,13 @@ def overview(request):
         parts = parts.filter(Q(sku__icontains=q)|Q(name__icontains=q)|Q(machine_type__icontains=q)|Q(location__icontains=q))
     low = Part.objects.filter(active=True, current_qty__lte=F('min_qty'))
     pending = PartRequest.objects.filter(status='pending')
-    if not can_manage(request.user):
-        pending = pending.filter(requested_by=request.user)
+    if not request.user.is_superuser:
+        visibility = Q(requested_by=request.user)
+        if is_stock_admin(request.user):
+            visibility |= Q(approval_route='stock_admin')
+        if is_sparepart_manager(request.user):
+            visibility |= Q(approval_route='manager')
+        pending = pending.filter(visibility)
     return render(request, 'inventory/overview.html', page_context(
         request, page=Paginator(parts.order_by('sku'), 40).get_page(request.GET.get('page')),
         q=q, total=Part.objects.filter(active=True).count(), low_count=low.count(),
@@ -126,19 +133,28 @@ def request_part(request):
 @require_GET
 def requests(request):
     qs = PartRequest.objects.select_related('part','order','requested_by','decided_by','fulfilled_by')
-    if not can_manage(request.user):
-        qs = qs.filter(requested_by=request.user)
+    if not request.user.is_superuser:
+        permitted = Q(requested_by=request.user)
+        if is_stock_admin(request.user):
+            permitted |= Q(approval_route='stock_admin')
+        if is_sparepart_manager(request.user):
+            permitted |= Q(approval_route='manager')
+        if can_manage(request.user):
+            permitted |= Q(status='approved')
+        qs = qs.filter(permitted).distinct()
     status = request.GET.get('status','')
     if status in dict(PartRequest.STATUS):
         qs = qs.filter(status=status)
+    page = Paginator(qs, 40).get_page(request.GET.get('page'))
+    page.object_list = list(page.object_list)
+    for item in page.object_list:
+        item.may_decide = can_approve_request(request.user, item)
     return render(request, 'inventory/requests.html', page_context(
-        request, page=Paginator(qs, 40).get_page(request.GET.get('page')), status=status))
+        request, page=page, status=status))
 
 
 @active_user
 def request_decide(request, pk):
-    if not can_manage(request.user):
-        raise PermissionDenied
     if request.method != 'POST':
         return HttpResponseNotAllowed(['POST'])
     form = DecisionForm(request.POST)
@@ -259,3 +275,66 @@ def stocktake_cancel(request, pk):
     except (Stocktake.DoesNotExist, ValidationError) as exc:
         _show_error(request, exc)
     return redirect('inventory_stocktake_detail', pk=pk)
+
+
+@active_user
+def import_movements(request):
+    if not can_manage(request.user):
+        raise PermissionDenied
+    if request.method == 'POST':
+        upload = request.FILES.get('file')
+        if upload is None:
+            messages.error(request, 'Pilih file .xlsx atau .csv terlebih dahulu.')
+        else:
+            try:
+                rows, fingerprint, filename = parse_uploaded(upload)
+                batch = import_stock_rows(rows, fingerprint, filename, request.user)
+                messages.success(request, f'{batch.row_count} mutasi barang berhasil diimpor. Buku stok diperbarui.')
+                return redirect('inventory_overview')
+            except (ValidationError, IntegrityError) as exc:
+                _show_error(request, exc) if isinstance(exc, ValidationError) else messages.error(request, 'Impor ditolak: file identik telah diproses atau transaksi bersamaan. Tidak ada mutasi parsial.')
+    elif request.method != 'GET':
+        return HttpResponseNotAllowed(['GET','POST'])
+    return render(request, 'inventory/import_movements.html', page_context(request))
+
+
+@active_user
+@require_GET
+def movement_template_csv(request):
+    if not can_manage(request.user):
+        raise PermissionDenied
+    import csv
+    response = HttpResponse(content_type='text/csv; charset=utf-8')
+    response['Content-Disposition'] = 'attachment; filename="template-mutasi-sparepart.csv"'
+    response['Cache-Control'] = 'private, no-store'
+    writer=csv.writer(response)
+    response.write('\ufeff')
+    writer.writerow(HEADERS)
+    return response
+
+
+@active_user
+@require_GET
+def movement_template_xlsx(request):
+    if not can_manage(request.user):
+        raise PermissionDenied
+    from openpyxl import Workbook
+    import io
+    wb=Workbook()
+    sheet=wb.active
+    sheet.title='Mutasi'
+    sheet.append(HEADERS)
+    for col in sheet[1]:
+        col.font=col.font.copy(bold=True)
+    # Preserve codes such as 001 when users type them into Excel manually.
+    for row in range(2, 502):
+        sheet.cell(row=row, column=1).number_format = '@'
+    sheet.column_dimensions['A'].width=24
+    sheet.column_dimensions['B'].width=20
+    sheet.column_dimensions['C'].width=16
+    sheet.column_dimensions['D'].width=40
+    buffer=io.BytesIO();wb.save(buffer)
+    response=HttpResponse(buffer.getvalue(), content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    response['Content-Disposition']='attachment; filename="template-mutasi-sparepart.xlsx"'
+    response['Cache-Control']='private, no-store'
+    return response

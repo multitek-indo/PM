@@ -3,7 +3,7 @@ from datetime import timedelta
 from urllib.parse import urlsplit
 from django.conf import settings
 from django.contrib import messages
-from django.contrib.auth.decorators import login_required
+from django.contrib.auth.decorators import login_required, permission_required
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
 from django.db import connection, DatabaseError, IntegrityError
@@ -16,10 +16,17 @@ from django.views.decorators.http import require_GET
 from .models import Machine, Plan, SchedulerState
 from .services import supervisor, visible_orders, submit_order, review_order, assign_order
 from .forms import ChecklistForm, ReviewForm, ImportForm, AssignmentForm
+from .machine_forms import MachineEditForm
+from django.db.models.deletion import ProtectedError
 from .importing import import_csv, import_excel, safe_cell, FIELDS
 from .tabular import template_xlsx
 
-def context(request,**kw): return {'is_supervisor':supervisor(request.user),**kw}
+def context(request,**kw):
+    user = request.user
+    return {'is_supervisor':supervisor(user),
+            'can_add_machine':user.has_perm('maintenance.add_machine'),
+            'can_edit_machine':user.has_perm('maintenance.change_machine'),
+            'can_delete_machine':user.has_perm('maintenance.delete_machine'), **kw}
 
 def healthz(request):
     try:
@@ -162,3 +169,49 @@ def server_time(request):
     response=JsonResponse({'epoch_ms':int(timezone.now().timestamp()*1000),'timezone':'Asia/Jakarta'})
     response['Cache-Control']='private, no-store, max-age=0'
     return response
+
+
+@login_required
+@permission_required('maintenance.add_machine', raise_exception=True)
+def machine_add(request):
+    form = MachineEditForm(request.POST or None)
+    if request.method == 'POST' and form.is_valid():
+        try:
+            machine = form.save()
+            messages.success(request, 'Mesin berhasil ditambahkan.')
+            return redirect('machine_detail', uid=machine.uid)
+        except IntegrityError:
+            form.add_error('code','Kode mesin sudah digunakan.')
+    return render(request,'machine_form.html',context(request,form=form,title='Tambah mesin',submit_label='Simpan mesin'))
+
+
+@login_required
+@permission_required('maintenance.change_machine', raise_exception=True)
+def machine_edit(request, uid):
+    machine=get_object_or_404(Machine,uid=uid)
+    form=MachineEditForm(request.POST or None,instance=machine)
+    if request.method=='POST' and form.is_valid():
+        try:
+            form.save()
+            messages.success(request,'Master mesin berhasil diperbarui.')
+            return redirect('machine_detail',uid=machine.uid)
+        except IntegrityError:
+            form.add_error('code','Kode mesin sudah digunakan.')
+    return render(request,'machine_form.html',context(request,form=form,title='Ubah mesin',submit_label='Simpan perubahan'))
+
+
+@login_required
+@permission_required('maintenance.delete_machine', raise_exception=True)
+def machine_delete(request, uid):
+    machine=get_object_or_404(Machine,uid=uid)
+    if request.method=='POST':
+        if request.POST.get('confirmation')!=machine.code:
+            messages.error(request,'Ketik kode mesin secara tepat untuk konfirmasi penghapusan.')
+        else:
+            try:
+                machine.delete()
+                messages.success(request,'Master mesin berhasil dihapus.')
+                return redirect('machines')
+            except ProtectedError:
+                messages.error(request,'Mesin memiliki jadwal/riwayat terkait. Nonaktifkan melalui Ubah mesin; riwayat tidak dihapus.')
+    return render(request,'machine_delete.html',context(request,machine=machine))
