@@ -10,7 +10,7 @@ def supervisor(user):
 
 def visible_orders(user):
     qs = WorkOrder.objects.select_related('plan__machine','assigned_to','submitted_by','approved_by')
-    return qs if supervisor(user) else qs.filter(assigned_to=user)
+    return qs if (supervisor(user) or (user.is_authenticated and user.is_active and user.has_perm('inventory.approve_admin_request'))) else qs.filter(assigned_to=user)
 
 def generate_orders(today=None):
     today = today or timezone.localdate()

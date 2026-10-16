@@ -58,10 +58,12 @@ def read_xlsx(data):
             ws=wb['Mutasi'] if 'Mutasi' in wb.sheetnames else next((s for s in wb.worksheets if s.sheet_state=='visible'),None)
             if ws is None:
                 raise ValidationError('Tidak ada sheet yang terlihat.')
-            if ws.max_row and ws.max_row>MAX_ROWS+2:
-                raise ValidationError('Maksimal 5.000 baris mutasi.')
+            # XLSX dimension metadata may underreport rows: never trust max_row.
+            ws.reset_dimensions()
             def data_rows():
-                for row in ws.iter_rows(min_row=1, max_col=5):
+                for index,row in enumerate(ws.iter_rows(min_row=1, max_col=12),start=1):
+                    if index>MAX_ROWS+1:
+                        raise ValidationError('Maksimal 5.000 baris mutasi.')
                     if any(c.data_type == 'f' for c in row):
                         raise ValidationError('Rumus Excel tidak diperbolehkan; Paste Special > Values terlebih dahulu.')
                     yield [c.value for c in row]

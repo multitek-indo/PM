@@ -2,11 +2,11 @@
 {% block title %}Impor mutasi sparepart - Multitek PM{% endblock %}
 {% block extrahead %}<link rel="stylesheet" href="{% static 'pm-inventory.css' %}?v=040">{% endblock %}
 {% block content %}
-<section class="inv-head"><div><div class="eyebrow">Stok sparepart</div><h1>Impor mutasi Excel / CSV</h1><p>Masukkan transaksi barang masuk atau keluar dari catatan manual. Tidak mengubah master sparepart.</p></div></section>
+<section class="inv-head"><div><div class="eyebrow">Stok sparepart</div><h1>Impor mutasi Excel / CSV</h1><p>Unggah dokumen untuk ditinjau manager. Impor tidak mengubah saldo sebelum disetujui.</p></div></section>
 <section class="card" style="max-width:800px"><h2>Template dan ketentuan</h2>
 <p>Unduh <a href="{% url 'inventory_movement_template_xlsx' %}">Template Excel (.xlsx)</a> atau <a href="{% url 'inventory_movement_template_csv' %}">Template CSV</a>.</p>
 <p>Header wajib: <code>kode_sparepart, jenis, jumlah, referensi</code>. Jenis: <strong>masuk</strong> atau <strong>keluar</strong>. Jumlah: <strong>bilangan bulat</strong> tanpa titik/koma. Gunakan kode yang sudah ada pada Master Sparepart.</p>
-<p>Maksimal 5.000 baris; XLSX 5 MiB atau CSV 2 MiB. Semua baris divalidasi terlebih dahulu. Bila satu baris salah atau pengeluaran melebihi stok, <strong>seluruh file ditolak tanpa mengubah saldo</strong>. File yang identik tidak akan diproses dua kali.</p>
-<form method="post" enctype="multipart/form-data">{% csrf_token %}<p><label for="movement-file">Pilih file Excel / CSV</label><input type="file" name="file" id="movement-file" accept=".xlsx,.csv" required></p>
-<div class="inv-actions"><button type="submit" class="button">Periksa dan impor mutasi</button><a class="button secondary" href="{% url 'inventory_overview' %}">Kembali</a></div></form></section>
+<p>Maksimal 5.000 baris; XLSX 5 MiB atau CSV 2 MiB. Pisahkan barang masuk dan keluar ke file berbeda. Semua baris dicatat sebagai pengajuan; manager lain memeriksa sebelum memposting seluruhnya secara atomik. Nomor dokumen dan transaksi setara tidak boleh dipakai ulang.</p>
+<form method="post" enctype="multipart/form-data">{% csrf_token %}<p><label for="document-id">Nomor dokumen impor unik</label><input id="document-id" name="document_id" type="text" maxlength="90" required placeholder="GRN-2026-001"></p><p><label for="movement-file">Pilih file Excel / CSV</label><input type="file" name="file" id="movement-file" accept=".xlsx,.csv" required></p>
+<div class="inv-actions"><button type="submit" class="button">Ajukan impor untuk persetujuan</button><a class="button secondary" href="{% url 'inventory_overview' %}">Kembali</a></div></form></section>
 {% endblock %}

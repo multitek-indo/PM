@@ -1,0 +1,13 @@
+{% extends 'base.html' %}{% load static l10n %}
+{% block title %}{{ title }} - Multitek PM{% endblock %}
+{% block extrahead %}<link rel="stylesheet" href="{% static 'pm-inventory.css' %}">{% endblock %}
+{% block content %}<section class="inv-head"><h1>{{ title }}</h1><p>Persetujuan oleh manager yang berbeda dari pengaju. Status pending tidak mengubah saldo.</p></section>
+<div class="inv-request-list">{% for item in items %}<article class="card inv-request">
+<h2>Dokumen #{{ item.pk }} · {% if type == 'import' %}{{ item.document_id }}{% else %}{{ item.document_no }}{% endif %}</h2>
+<p class="muted">{{ item.get_kind_display }} · {{ item.get_status_display }} · Oleh {% if type == 'import' %}{{ item.actor }} · {{ item.row_count }} baris{% else %}{{ item.requested_by }} · {{ item.part.sku }} · {{ item.quantity|floatformat:'0u' }} {{ item.part.unit }}{% endif %}</p>
+{% if item.status == 'pending' and can_review_admin %}<form method="post" action="{% if type == 'import' %}{% url 'inventory_import_decide' item.pk %}{% else %}{% url 'inventory_manual_decide' item.pk %}{% endif %}">{% csrf_token %}
+<label>Catatan manager <textarea name="note" rows="2" maxlength="600" placeholder="Alasan persetujuan atau penolakan"></textarea></label>
+<div class="inv-actions"><button class="button" name="action" value="approve">Setujui &amp; posting</button><button class="button secondary" name="action" value="reject">Tolak</button></div></form>{% endif %}
+</article>{% empty %}<section class="card"><p>Belum ada pengajuan.</p></section>{% endfor %}</div>
+<div class="inv-pager"><span>{{ items.number }} / {{ items.paginator.num_pages }}</span></div>
+{% endblock %}

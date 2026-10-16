@@ -36,6 +36,7 @@ class MovementForm(forms.Form):
     kind = forms.ChoiceField(choices=[('receive', 'Barang masuk'), ('issue', 'Barang keluar')], label='Jenis')
     quantity = forms.IntegerField(label='Jumlah', min_value=1, max_value=999999999,
                                   widget=forms.NumberInput(attrs={'step':'1','inputmode':'numeric'}))
+    document_no = forms.CharField(label='Nomor dokumen unik', max_length=90, min_length=3, help_text='Contoh: GRN-2026-0001 / WO-2026-0001')
     note = forms.CharField(label='Referensi / alasan', max_length=600, widget=forms.Textarea(attrs={'rows':2}))
 
     def clean_note(self):
@@ -50,12 +51,19 @@ class RequestForm(forms.ModelForm):
                                   widget=forms.NumberInput(attrs={'step':'1','inputmode':'numeric'}))
     class Meta:
         model = PartRequest
-        fields = ['part', 'quantity', 'order', 'note']
+        fields = ['part', 'quantity', 'order', 'note', 'procurement_ref', 'supplier', 'estimated_unit_price', 'needed_by']
         widgets = {'note': forms.Textarea(attrs={'rows':3, 'placeholder':'Alasan kebutuhan dan kondisi mesin'})}
 
     def __init__(self, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['part'].queryset = Part.objects.filter(active=True)
+        from .services import is_stock_admin
+        if user and not is_stock_admin(user):
+            for field in ('procurement_ref','supplier','estimated_unit_price','needed_by'):
+                self.fields.pop(field)
+        if user and is_stock_admin(user):
+            self.fields['note'].required = True
+            self.fields['note'].help_text = 'Alasan pengadaan untuk persetujuan manager/owner'
         self.fields['order'].required = False
         self.fields['order'].empty_label = 'Tanpa work order'
         self.fields['order'].queryset = (visible_orders(user).filter(status='open') if user and user.is_active

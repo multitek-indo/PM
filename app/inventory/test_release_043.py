@@ -61,7 +61,7 @@ class Inventory043Tests(TestCase):
             'part':self.part.pk,'kind':'receive','quantity':'2.5','note':'GRN'})
         self.assertEqual(invalid.status_code,200)
         self.assertFalse(StockMovement.objects.exists())
-        with self.assertRaises(ValidationError):move_stock(self.part.pk,'receive',Decimal('2.5'),self.admin,'GRN')
+        with self.assertRaises(ValidationError):move_stock(self.part.pk,'receive',Decimal('2.5'),self.superuser,'GRN')
         self.part.refresh_from_db();self.assertEqual(self.part.current_qty,0)
         reqform=RequestForm({'part':self.part.pk,'quantity':'1.5','note':'Tidak valid'},user=self.tech)
         self.assertFalse(reqform.is_valid())
@@ -69,14 +69,17 @@ class Inventory043Tests(TestCase):
         self.assertContains(self.client.get(reverse('inventory_overview')),'0')
 
     def test_csv_bulk_atomic_and_duplicate_upload(self):
-        body=b'kode_sparepart,jenis,jumlah,referensi\n001,masuk,12,GRN-A\n001,keluar,2,WO-13\n'
+        body=b'kode_sparepart,jenis,jumlah,referensi\n001,masuk,12,GRN-A\n'
         self.assertEqual(self.upload(body).status_code,302)
-        self.part.refresh_from_db();self.assertEqual(self.part.current_qty,10)
-        self.assertEqual(StockMovement.objects.count(),2)
+        self.part.refresh_from_db();self.assertEqual(self.part.current_qty,0)
+        self.assertEqual(StockMovement.objects.count(),0)
         self.assertEqual(StockImportBatch.objects.count(),1)
+        from .services import review_import
+        review_import(StockImportBatch.objects.get().pk,self.manager,'approve','Sesuai')
+        self.part.refresh_from_db();self.assertEqual(self.part.current_qty,12)
         self.assertEqual(self.upload(body).status_code,200)
-        self.part.refresh_from_db();self.assertEqual(self.part.current_qty,10)
-        self.assertEqual(StockMovement.objects.count(),2)
+        self.part.refresh_from_db();self.assertEqual(self.part.current_qty,12)
+        self.assertEqual(StockMovement.objects.count(),1)
 
     def test_import_bad_last_row_never_changes_stock(self):
         body=b'kode_sparepart,jenis,jumlah,referensi\n001,masuk,8,PO-1\nMISSING,keluar,1,PO-2\n'
@@ -86,8 +89,10 @@ class Inventory043Tests(TestCase):
         self.assertFalse(StockImportBatch.objects.exists())
 
     def test_import_rejects_insufficient_stock_and_decimal(self):
-        body=b'kode_sparepart,jenis,jumlah,referensi\n001,masuk,8,PO-1\n001,keluar,9,WO-1\n'
-        self.assertEqual(self.upload(body).status_code,200)
+        body=b'kode_sparepart,jenis,jumlah,referensi\n001,keluar,9,WO-1\n'
+        self.assertEqual(self.upload(body).status_code,302)
+        from .services import review_import
+        with self.assertRaises(ValidationError):review_import(StockImportBatch.objects.get().pk,self.manager,'approve','')
         self.assertFalse(StockMovement.objects.exists())
         with self.assertRaises(ValidationError):read_csv(b'kode_sparepart,jenis,jumlah,referensi\n001,masuk,1.5,PO-1\n')
 
@@ -99,6 +104,9 @@ class Inventory043Tests(TestCase):
         sheet.append(['001','masuk',3,'GRN-XL'])
         buff=io.BytesIO();book.save(buff)
         self.assertEqual(self.upload(buff.getvalue(),'stock.xlsx').status_code,302)
+        self.part.refresh_from_db();self.assertEqual(self.part.current_qty,0)
+        from .services import review_import
+        review_import(StockImportBatch.objects.get().pk,self.manager,'approve','Sesuai')
         self.part.refresh_from_db();self.assertEqual(self.part.current_qty,3)
 
     def test_manual_import_requires_group(self):

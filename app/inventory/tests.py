@@ -20,6 +20,7 @@ class InventoryTests(TestCase):
     def setUp(self):
         User = get_user_model()
         self.manager = User.objects.create_superuser('stock-admin',password='isolated-test-pass-12345')
+        self.auditor = User.objects.create_superuser('stock-auditor',password='isolated-test-pass-12345')
         self.tech = User.objects.create_user('stock-tech',password='isolated-test-pass-12345')
         self.other = User.objects.create_user('stock-other',password='isolated-test-pass-12345')
         self.part = Part.objects.create(sku='BEARING-01',name='Bearing jarum',unit='pcs',min_qty=D('2.000'))
@@ -85,6 +86,7 @@ class InventoryTests(TestCase):
         self.assertFalse(StockMovement.objects.exists())
 
     def test_request_from_mobile_and_wo(self):
+        move_stock(self.part.pk,'receive',D('5'),self.manager,'Stok uji')
         self.client.force_login(self.tech)
         response=self.client.post('/inventory/requests/new/',{'part':self.part.pk,'quantity':'3','order':self.wo.pk,'note':'Bearing macet'})
         self.assertEqual(response.status_code,302)
@@ -92,7 +94,8 @@ class InventoryTests(TestCase):
         self.assertEqual(obj.requested_by,self.tech)
         self.assertEqual(obj.order,self.wo)
         self.assertEqual(obj.status,'pending')
-        self.assertEqual(self.part.current_qty,0)
+        self.part.refresh_from_db()
+        self.assertEqual(self.part.current_qty,D('2'))
 
     def test_other_workorder_cannot_be_referenced(self):
         self.client.force_login(self.other)
@@ -152,14 +155,14 @@ class InventoryTests(TestCase):
         self.assertEqual(line.book_qty,D('8'))
         with self.assertRaises(ValidationError): start_stocktake('Duplikat',self.manager)
         count_line(op.pk,line.pk,D('7'),self.manager)
-        changes=post_stocktake(op.pk,self.manager)
+        changes=post_stocktake(op.pk,self.auditor)
         self.part.refresh_from_db();self.assertEqual(changes,1)
         self.assertEqual(self.part.current_qty,D('7'))
         self.assertEqual(StockMovement.objects.filter(stocktake=op).count(),1)
 
     def test_incomplete_count_cannot_post(self):
         op=start_stocktake('Siklus',self.manager)
-        with self.assertRaises(ValidationError): post_stocktake(op.pk,self.manager)
+        with self.assertRaises(ValidationError): post_stocktake(op.pk,self.auditor)
         op.refresh_from_db();self.assertEqual(op.status,'draft')
 
     def test_stale_count_does_not_overwrite_live_movements(self):
@@ -167,14 +170,14 @@ class InventoryTests(TestCase):
         op=start_stocktake('Fisik',self.manager)
         count_line(op.pk,op.lines.get().pk,D('8'),self.manager)
         move_stock(self.part.pk,'issue',D('1'),self.manager,'Dipakai selama hitung')
-        with self.assertRaises(ValidationError): post_stocktake(op.pk,self.manager)
+        with self.assertRaises(ValidationError): post_stocktake(op.pk,self.auditor)
         self.part.refresh_from_db();self.assertEqual(self.part.current_qty,D('9'))
         self.assertFalse(StockMovement.objects.filter(stocktake=op).exists())
 
     def test_stocktake_does_not_change_maintenance(self):
         op=start_stocktake('Audit',self.manager)
         count_line(op.pk,op.lines.get().pk,D('0'),self.manager)
-        post_stocktake(op.pk,self.manager)
+        post_stocktake(op.pk,self.auditor)
         self.wo.refresh_from_db()
         self.assertEqual(self.wo.status,'open')
         self.assertEqual(self.wo.answers,[])
@@ -182,14 +185,14 @@ class InventoryTests(TestCase):
     def test_stocktake_rejects_second_post(self):
         op=start_stocktake('Audit',self.manager)
         count_line(op.pk,op.lines.get().pk,D('0'),self.manager)
-        post_stocktake(op.pk,self.manager)
-        with self.assertRaises(ValidationError):post_stocktake(op.pk,self.manager)
+        post_stocktake(op.pk,self.auditor)
+        with self.assertRaises(ValidationError):post_stocktake(op.pk,self.auditor)
 
     def test_post_count_after_post_forbidden(self):
         op=start_stocktake('Audit',self.manager)
         line=op.lines.get()
         count_line(op.pk,line.pk,D('0'),self.manager)
-        post_stocktake(op.pk,self.manager)
+        post_stocktake(op.pk,self.auditor)
         with self.assertRaises(ValidationError):count_line(op.pk,line.pk,D('3'),self.manager)
 
     def test_technician_cannot_post_opname(self):
@@ -230,14 +233,14 @@ class InventoryTests(TestCase):
     def test_cannot_cancel_posted_count(self):
         op=start_stocktake('Audit selesai',self.manager)
         count_line(op.pk,op.lines.get().pk,D('0'),self.manager)
-        post_stocktake(op.pk,self.manager)
+        post_stocktake(op.pk,self.auditor)
         with self.assertRaises(ValidationError):cancel_stocktake(op.pk,self.manager,'Tidak boleh')
 
     def test_cancel_requires_reason(self):
         op=start_stocktake('Audit gagal',self.manager)
         with self.assertRaises(ValidationError):cancel_stocktake(op.pk,self.manager,'')
 
-    def test_manager_can_edit_minimum_without_changing_balance(self):
+    def test_master_edit_minimum_without_changing_balance(self):
         move_stock(self.part.pk, 'receive', D('10'), self.manager, 'GRN awal')
         self.client.force_login(self.manager)
         res=self.client.post(reverse('inventory_edit_part',args=[self.part.pk]), {

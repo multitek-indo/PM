@@ -3,7 +3,7 @@ from decimal import Decimal
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
-from .models import Part, StockMovement
+from .models import Part, StockMovement, ManualStockRequest
 
 
 class MovementPartSearchTests(TestCase):
@@ -28,15 +28,16 @@ class MovementPartSearchTests(TestCase):
         self.assertNotContains(self.client.get(reverse('inventory_request_new')), 'pm-part-search.js')
         self.assertNotContains(self.client.get(reverse('inventory_add_part')), 'pm-part-search.js')
 
-    def test_normal_stock_mutation_unchanged(self):
+    def test_stock_mutation_is_staged_for_manager(self):
         self.client.force_login(self.manager)
         response = self.client.post(reverse('inventory_movement'), {
-            'part': str(self.first.pk), 'kind': 'receive', 'quantity': '3', 'note': 'Barang diterima UJI'
+            'part': str(self.first.pk), 'kind': 'receive', 'quantity': '3', 'note': 'Barang diterima UJI', 'document_no':'SEARCH-041-1'
         })
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(StockMovement.objects.count(), 1)
+        self.assertEqual(StockMovement.objects.count(), 0)
+        self.assertEqual(ManualStockRequest.objects.filter(status='pending').count(),1)
         self.first.refresh_from_db()
-        self.assertEqual(self.first.current_qty, Decimal('3.000'))
+        self.assertEqual(self.first.current_qty, Decimal('0'))
 
     def test_invalid_submission_keeps_selected_option(self):
         self.client.force_login(self.manager)

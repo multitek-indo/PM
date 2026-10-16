@@ -6,7 +6,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
-from django.db import connection, DatabaseError, IntegrityError
+from django.db import connection, DatabaseError, IntegrityError, transaction
 from django.db.models import Q, F
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404
@@ -26,7 +26,8 @@ def context(request,**kw):
     return {'is_supervisor':supervisor(user),
             'can_add_machine':user.has_perm('maintenance.add_machine'),
             'can_edit_machine':user.has_perm('maintenance.change_machine'),
-            'can_delete_machine':user.has_perm('maintenance.delete_machine'), **kw}
+            'can_delete_machine':user.has_perm('maintenance.delete_machine'),
+            'can_monitor_all':supervisor(user) or user.has_perm('inventory.approve_admin_request'), **kw}
 
 def healthz(request):
     try:
@@ -117,7 +118,7 @@ def order_detail(request,pk):
 
 @login_required
 def import_machines(request):
-    if not supervisor(request.user): raise PermissionDenied
+    if not request.user.has_perm('maintenance.add_machine'): raise PermissionDenied
     form=ImportForm(request.POST or None,request.FILES or None)
     if request.method=='POST' and form.is_valid():
         try:
@@ -143,21 +144,30 @@ def machine_template(request):
 @login_required
 @require_GET
 def export_orders(request):
-    if not supervisor(request.user): raise PermissionDenied
+    if not (supervisor(request.user) or request.user.has_perm('inventory.approve_admin_request')):
+        raise PermissionDenied
+    qs=visible_orders(request.user)
+    status=request.GET.get('status','')
+    q=request.GET.get('q','').strip()[:100]
+    if status=='overdue':qs=qs.exclude(status='done').filter(due_date__lt=timezone.localdate())
+    elif status in ('open','review','done'):qs=qs.filter(status=status)
+    if q:qs=qs.filter(Q(plan__machine__code__icontains=q)|Q(title__icontains=q)|Q(plan__machine__site__icontains=q))
     response=HttpResponse(content_type='text/csv; charset=utf-8')
     response['Content-Disposition']='attachment; filename="multitek-pm-workorders.csv"'
-    response.write('\ufeff'); writer=csv.writer(response)
+    response['Cache-Control']='private, no-store'
+    response['X-Export-Limit']='20000'
+    response.write('\ufeff');writer=csv.writer(response)
     writer.writerow(['id','mesin','pabrik','line','pekerjaan','jatuh_tempo','status','teknisi','dikirim','disetujui','catatan'])
-    # Bounded pilot export; show limit in UI rather than silently implying full history.
-    for w in visible_orders(request.user).order_by('-due_date','-id')[:20000].iterator(chunk_size=250):
-        writer.writerow([safe_cell(x) for x in [w.pk,w.plan.machine.code,w.plan.machine.site,w.plan.machine.line,w.title,w.due_date,w.get_status_display(),w.assigned_to or '',w.submitted_at or '',w.approved_at or '',w.notes]])
+    for w in qs.order_by('-due_date','-id')[:20000].iterator(chunk_size=250):
+        writer.writerow([safe_cell(x) for x in [w.pk,w.plan.machine.code,w.plan.machine.site,w.plan.machine.line,
+                     w.title,w.due_date,w.get_status_display(),w.assigned_to or '',w.submitted_at or '',w.approved_at or '',w.notes]])
     return response
 
 
 @login_required
 @require_GET
 def machine_template_excel(request):
-    if not supervisor(request.user): raise PermissionDenied
+    if not request.user.has_perm('maintenance.add_machine'): raise PermissionDenied
     response=HttpResponse(template_xlsx(),content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     response['Content-Disposition']='attachment; filename="template-mesin-multitek.xlsx"'
     response['Cache-Control']='private, no-store'
@@ -177,7 +187,10 @@ def machine_add(request):
     form = MachineEditForm(request.POST or None)
     if request.method == 'POST' and form.is_valid():
         try:
-            machine = form.save()
+            with transaction.atomic():
+                machine=form.save()
+                from inventory.services import _audit
+                _audit('machine',machine.pk,'created',request.user,after={'code':machine.code,'name':machine.name,'site':machine.site,'line':machine.line})
             messages.success(request, 'Mesin berhasil ditambahkan.')
             return redirect('machine_detail', uid=machine.uid)
         except IntegrityError:
@@ -192,7 +205,13 @@ def machine_edit(request, uid):
     form=MachineEditForm(request.POST or None,instance=machine)
     if request.method=='POST' and form.is_valid():
         try:
-            form.save()
+            with transaction.atomic():
+                locked=Machine.objects.select_for_update().get(pk=machine.pk)
+                old={'code':locked.code,'name':locked.name,'site':locked.site,'line':locked.line,'serial':locked.serial,'active':locked.active}
+                form.save()
+                from inventory.services import _audit
+                new={'code':machine.code,'name':machine.name,'site':machine.site,'line':machine.line,'serial':machine.serial,'active':machine.active}
+                if old!=new:_audit('machine',machine.pk,'edited',request.user,before=old,after=new)
             messages.success(request,'Master mesin berhasil diperbarui.')
             return redirect('machine_detail',uid=machine.uid)
         except IntegrityError:
@@ -209,7 +228,12 @@ def machine_delete(request, uid):
             messages.error(request,'Ketik kode mesin secara tepat untuk konfirmasi penghapusan.')
         else:
             try:
-                machine.delete()
+                with transaction.atomic():
+                    before={'code':machine.code,'name':machine.name,'serial':machine.serial}
+                    pk=machine.pk
+                    machine.delete()
+                    from inventory.services import _audit
+                    _audit('machine',pk,'deleted',request.user,before=before)
                 messages.success(request,'Master mesin berhasil dihapus.')
                 return redirect('machines')
             except ProtectedError:

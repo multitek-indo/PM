@@ -1,0 +1,5 @@
+{% extends 'base.html' %}{% load static %}
+{% block title %}Audit persediaan{% endblock %}
+{% block extrahead %}<link rel="stylesheet" href="{% static 'pm-inventory.css' %}">{% endblock %}
+{% block content %}<section class="inv-head"><h1>Riwayat audit persediaan</h1><p>Master, approval dan posting memiliki pelaku serta waktu.</p></section>
+<section class="card inv-panel"><div class="inv-catalog">{% for event in page %}<article class="inv-part"><b>{{ event.get_action_display|default:event.action }}</b> · {{ event.entity_type }} #{{ event.entity_pk }}<p class="muted">{{ event.actor }} · {{ event.created_at|date:'d M Y H:i' }}</p><p>Alasan: {{ event.reason|default:'-' }}</p></article>{% empty %}<p>Belum ada aktivitas.</p>{% endfor %}</div></section>{% endblock %}
