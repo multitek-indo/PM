@@ -63,3 +63,8 @@ from .version import APP_VERSION
 INSTALLED_APPS = [*INSTALLED_APPS, 'branding.apps.BrandingConfig']
 TEMPLATES[0]['OPTIONS']['context_processors'].append('branding.context_processors.company_identity')
 # END PM VERSION AND COMPANY IDENTITY 0.3
+
+# BEGIN SPAREPART PHOTO 0.3.1
+INSTALLED_APPS.append('spareparts.apps.SparepartsConfig')
+SPAREPART_STORAGE_DIR = '/var/pm-spareparts'
+# END SPAREPART PHOTO 0.3.1

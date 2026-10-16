@@ -24,3 +24,11 @@ urlpatterns = [
     path('orders/export.csv', views.export_orders, name='export_orders'),
     path('orders/<int:pk>/', views.order_detail, name='order_detail'),
 ]
+
+# BEGIN SPAREPART PHOTO 0.3.1
+from spareparts import views as spareparts_views
+urlpatterns += [
+    path('orders/<int:pk>/spareparts/upload/', spareparts_views.upload_photo, name='sparepart_upload_photo'),
+    path('spareparts/<int:photo_id>/photo/', spareparts_views.view_photo, name='sparepart_view_photo'),
+]
+# END SPAREPART PHOTO 0.3.1
