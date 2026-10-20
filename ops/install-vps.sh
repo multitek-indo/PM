@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# Multitek PM - reproducible FRESH VPS installation from a clean GitHub checkout.
+# Multitek PM AutoInstaller v2.1 - reproducible FRESH VPS install from a clean GitHub checkout.
 # Source: https://github.com/multitek-indo/PM
 # Usage: sudo bash ops/install-vps.sh --domain pm.example.com
 #        sudo bash ops/install-vps.sh --check --domain pm.example.com
 #        sudo bash ops/install-vps.sh --local-only
 # Auto-provisions missing host prerequisites, without upgrading existing Docker Engine.
 # On fresh installation only: admin/admin123, must rotate at first login.
+# Enables first-login middleware on the deployed snapshot automatically.
+# Does not edit the user Git clone or alter GitHub repository contents.
 # Does not migrate another server's data, modify cloudflared/DNS, or touch other Compose projects.
 set -Eeuo pipefail
 umask 077
@@ -286,7 +288,7 @@ git -C "$SOURCE_ROOT" ls-files --error-unmatch ops/install-vps.sh >/dev/null 2>&
 [[ -z "$(git -C "$SOURCE_ROOT" status --porcelain --untracked-files=no)" ]] || stop 'Source tracked belum clean. Review perubahan lalu gunakan commit/release.'
 COMMIT="$(git -C "$SOURCE_ROOT" rev-parse HEAD)"
 [[ "$COMMIT" =~ ^[a-f0-9]{40}$ ]] || stop 'Commit checkout tidak valid.'
-for file in compose.yaml requirements.txt pmctl app/manage.py app/config/settings.py app/config/test_settings.py app/config/first_login.py app/maintenance/test_first_login_password.py app/maintenance/management/commands/pm_bootstrap.py db-init/10-pm-role.sh; do
+for file in compose.yaml requirements.txt pmctl app/manage.py app/config/settings.py app/config/urls.py app/config/test_settings.py app/config/first_login.py app/maintenance/test_first_login_password.py app/maintenance/management/commands/pm_bootstrap.py db-init/10-pm-role.sh ops/enable-first-login.py; do
   [[ -f "$SOURCE_ROOT/$file" && ! -L "$SOURCE_ROOT/$file" ]] || stop "Source wajib hilang atau symlink: $file"
 done
 if [[ -n "$DOMAIN" ]]; then
@@ -294,8 +296,30 @@ if [[ -n "$DOMAIN" ]]; then
     grep -Fq "$setting" "$SOURCE_ROOT/app/config/settings.py" || stop "Source belum mendukung HTTPS origin: $setting"
   done
 fi
-grep -Fq 'config.first_login.EnforceInitialAdminPasswordChange' "$SOURCE_ROOT/app/config/settings.py" || stop 'First-login password rotation middleware belum diaktifkan; jalankan python3 ops/enable-first-login.py pada repo sebelum push.'
-grep -Fq "path('password/'," "$SOURCE_ROOT/app/config/urls.py" || stop 'Rute ganti password Django tidak ditemukan.'
+# File helper must exist in the Git commit. It can patch the immutable-source
+# SNAPSHOT later without dirtying this Git clone or needing a second commit.
+# --check remains read-only; verify source is patchable without modifying it.
+python3 - "$SOURCE_ROOT" <<'PY_FIRST_LOGIN_CHECK'
+from pathlib import Path
+import ast,sys
+root=Path(sys.argv[1])
+settings=root/'app/config/settings.py'
+urls=root/'app/config/urls.py'
+helper=root/'ops/enable-first-login.py'
+raw=settings.read_text(encoding='utf-8')
+marker="'django.contrib.auth.middleware.AuthenticationMiddleware'"
+middleware="'config.first_login.EnforceInitialAdminPasswordChange'"
+for p in (settings,urls,helper):
+    ast.parse(p.read_text(encoding='utf-8'),filename=str(p))
+if "path('password/'," not in urls.read_text(encoding='utf-8'):
+    raise SystemExit('STOP PM: Route /password/ belum tersedia. Tidak mengaktifkan akun default yang tidak bisa mengganti password.')
+if raw.count(middleware)==1:
+    print('[PM] First-login middleware sudah aktif pada source GitHub.')
+elif raw.count(middleware)==0 and raw.count(marker)==1:
+    print('[PM] First-login middleware belum aktif di source GitHub; installer akan mengaktifkannya otomatis pada staging.')
+else:
+    raise SystemExit('STOP PM: Deklarasi AuthenticationMiddleware tidak sesuai pola aman. Periksa source GitHub.')
+PY_FIRST_LOGIN_CHECK
 for rel in .env private sparepart_uploads; do
   if git -C "$SOURCE_ROOT" ls-files --error-unmatch "$rel" >/dev/null 2>&1 || git -C "$SOURCE_ROOT" ls-files "$rel/" | grep -q .; then
     stop "Repo melacak path runtime/secret: $rel"
@@ -377,9 +401,18 @@ for d in dirs: os.chmod(d,0o755)
 for f,executable in files: os.chmod(f,0o755 if executable else 0o644)
 print('PASS source permission: %d folder, %d file; code bisa dibaca UID 10001 dan PostgreSQL.'%(len(dirs),len(files)))
 PY
-for req in compose.yaml requirements.txt app/manage.py app/config/first_login.py app/maintenance/test_first_login_password.py db-init/10-pm-role.sh ops/install-vps.sh; do
+for req in compose.yaml requirements.txt app/manage.py app/config/settings.py app/config/urls.py app/config/first_login.py app/maintenance/test_first_login_password.py db-init/10-pm-role.sh ops/enable-first-login.py ops/install-vps.sh; do
   [[ -f "$ROOT/$req" ]] || stop "Snapshot tidak lengkap: $req"
 done
+
+# Runs only on a new, disposable app snapshot. This helper is idempotent:
+# if the GitHub source already contains the middleware, it makes no changes.
+# If uploaded via GitHub web but not yet activated in settings.py, it enables
+# middleware without requiring a separate VPS-side edit/commit/push.
+say 'Mengaktifkan password-rotation middleware otomatis pada staging, bukan checkout GitHub.'
+python3 "$ROOT/ops/enable-first-login.py" || stop 'Gagal mengaktifkan middleware first-login pada staging.'
+grep -Fq 'config.first_login.EnforceInitialAdminPasswordChange' "$ROOT/app/config/settings.py" || \
+  stop 'Middleware tidak terdeteksi setelah patch staging.'
 
 say 'Memakai image resmi Python dan PostgreSQL dengan digest immutable untuk instalasi ini.'
 docker pull python:3.12-slim-bookworm
