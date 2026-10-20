@@ -20,8 +20,12 @@ untuk host yang memiliki service produksi lain. Perluas disk/upgrade RAM terlebi
 Pada VPS baru:
 
 ```bash
+sudo apt-get update
+sudo apt-get install -y git
+
 git clone https://github.com/multitek-indo/PM.git
 cd PM
+
 sudo bash ops/install-vps.sh --domain pm-baru.multitekindo.com
 ```
 
