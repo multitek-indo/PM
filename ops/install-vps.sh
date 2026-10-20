@@ -4,6 +4,8 @@
 # Usage: sudo bash ops/install-vps.sh --domain pm.example.com
 #        sudo bash ops/install-vps.sh --check --domain pm.example.com
 #        sudo bash ops/install-vps.sh --local-only
+# Auto-provisions missing host prerequisites, without upgrading existing Docker Engine.
+# On fresh installation only: admin/admin123, must rotate at first login.
 # Does not migrate another server's data, modify cloudflared/DNS, or touch other Compose projects.
 set -Eeuo pipefail
 umask 077
@@ -13,6 +15,7 @@ PROJECT=multitek-pm
 PORT=18080
 MODE=install
 DOMAIN=''
+LOCAL_ONLY=0
 STAGE=''
 STARTED_DB=0
 
@@ -25,54 +28,245 @@ Multitek PM - installer VPS baru
   sudo bash ops/install-vps.sh --domain pm.example.com
   sudo bash ops/install-vps.sh --local-only
 
-Prerequisites: Ubuntu Linux, Git clone multitek-indo/PM, Docker Engine 28+, Docker
-Compose plugin, >=3.2 GiB memory, >=1.8 GiB MemAvailable, >=30 GiB disk free.
-Cloudflared/DNS/Cloudflare Access must be configured separately on the correct VPS.
-For initial install only. Never run against an existing /opt/multitek-pm.
+Supported OS: Ubuntu or Debian, apt-get, systemd, Git clone multitek-indo/PM.
+--install: installs missing host CLI tools and Docker Compose plugin automatically.
+If Docker is absent, installs official Docker Engine from Docker's APT repository.
+Existing Docker Engine will NEVER be upgraded, removed, or restarted.
+--check is read-only: reports missing dependencies, never installs packages.
+Requires Docker Engine 28+, >=3.2 GiB RAM, >=1.8 GiB MemAvailable, >=30 GiB free.
+Initial admin login: admin / admin123 (enforced password change on first login).
+Cloudflared tunnel, DNS and Cloudflare Access require separate authorization.
+Fresh install only. Never run against an existing /opt/multitek-pm.
 EOF
 }
 while (( $# )); do
   case "$1" in
     --check) MODE=check; shift ;;
     --install) MODE=install; shift ;;
-    --local-only) [[ -z "$DOMAIN" ]] || stop '--local-only tidak boleh bersama --domain'; DOMAIN=''; shift ;;
-    --domain) [[ $# -ge 2 ]] || stop '--domain memerlukan hostname'; DOMAIN="$2"; shift 2 ;;
+    --local-only) [[ -z "$DOMAIN" ]] || stop '--local-only tidak boleh bersama --domain'; LOCAL_ONLY=1; DOMAIN=''; shift ;;
+    --domain) [[ $# -ge 2 ]] || stop '--domain memerlukan hostname'; [[ "$LOCAL_ONLY" -eq 0 ]] || stop '--domain tidak boleh bersama --local-only'; DOMAIN="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) stop "Argumen tidak dikenali: $1" ;;
   esac
 done
 [[ "$(id -u)" -eq 0 ]] || stop 'Jalankan sebagai root dengan sudo.'
-for cmd in git docker python3 ss curl flock tar stat readlink; do
-  command -v "$cmd" >/dev/null 2>&1 || stop "$cmd tidak tersedia. Siapkan prasyarat dulu."
-done
+# Do not run APT or touch Docker if PM is already installed.
+[[ ! -e "$APP" && ! -L "$APP" ]] || stop "$APP already exists; fresh install refuses to overwrite it."
 
-if [[ -n "$DOMAIN" ]]; then
-  python3 - "$DOMAIN" <<'PY'
-import ipaddress,re,sys
-s=sys.argv[1]
-if len(s)>253 or '.' not in s or s!=s.lower() or s.endswith('.'):
-    raise SystemExit('STOP: Domain harus FQDN huruf kecil, tanpa https:// atau path.')
-for part in s.split('.'):
-    if not re.fullmatch(r'[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?',part):
-        raise SystemExit('STOP: Label domain tidak valid.')
-try:
-    ipaddress.ip_address(s)
-except ValueError:
-    pass
-else:
-    raise SystemExit('STOP: Masukkan hostname DNS, bukan IP.')
-PY
+[[ -z "${DOCKER_HOST:-}" ]] || stop 'Remote DOCKER_HOST is not allowed.'
+[[ -z "${DOCKER_CONTEXT:-}" ]] || stop 'DOCKER_CONTEXT override is not allowed.'
+
+if [[ -r /etc/os-release ]]; then
+  . /etc/os-release
+else
+  stop '/etc/os-release is missing.'
+fi
+case "${ID:-}" in
+  ubuntu|debian) ;;
+  *) stop 'Automatic prerequisites support Ubuntu/Debian only; use a supported VPS.' ;;
+esac
+command -v apt-get >/dev/null 2>&1 || stop 'apt-get is required for automatic prerequisites.'
+command -v systemctl >/dev/null 2>&1 || stop 'systemd is required for automatic Docker daemon management.'
+
+# Fail before installing/starting any Docker prerequisite on an undersized VPS.
+# This fast preflight uses standard host files and does not modify disk/RAM.
+[[ -d /opt && -r /proc/meminfo ]] || stop 'Host /opt or /proc/meminfo is not available.'
+mem_total_kb="$(awk '$1=="MemTotal:" {print $2}' /proc/meminfo)"
+mem_avail_kb="$(awk '$1=="MemAvailable:" {print $2}' /proc/meminfo)"
+disk_free_kb="$(df -Pk /opt | awk 'NR==2 {print $4}')"
+[[ "$mem_total_kb" =~ ^[0-9]+$ && "$mem_avail_kb" =~ ^[0-9]+$ && "$disk_free_kb" =~ ^[0-9]+$ ]] || stop 'Failed to read host resource limits.'
+printf '[PM] Preflight before APT: RAM total %s MiB; available %s MiB; disk free %s GiB.\n' \
+  "$((mem_total_kb/1024))" "$((mem_avail_kb/1024))" "$((disk_free_kb/1024/1024))"
+(( mem_total_kb >= 3355444 )) || stop 'RAM total less than 3.2 GiB. Do not install on this VPS yet.'
+(( mem_avail_kb >= 1887437 )) || stop 'MemAvailable less than 1.8 GiB. Existing services need more memory.'
+(( disk_free_kb >= 31457280 )) || stop 'Free space less than 30 GiB. Expand disk first.'
+
+# A pre-existing flock is used early; on bare hosts apt/dpkg has its own lock.
+if [[ "$MODE" != check ]]; then
+  exec 8>/run/lock/multitek-pm-deps-install.lock
+  if command -v flock >/dev/null 2>&1; then
+    flock -n 8 || stop 'Another Multitek PM prerequisites operation is running.'
+  fi
 fi
 
-[[ -z "${DOCKER_HOST:-}" ]] || stop 'DOCKER_HOST remote tidak diizinkan.'
-ctx="$(docker context show)"
-endpoint="$(docker context inspect "$ctx" --format '{{.Endpoints.docker.Host}}' 2>/dev/null)"
-[[ "$endpoint" == unix://* ]] || stop 'Docker context harus socket lokal VPS.'
-docker info >/dev/null 2>&1 || stop 'Docker Engine tidak aktif.'
-docker compose version >/dev/null 2>&1 || stop 'Docker Compose plugin tidak tersedia.'
-engine="$(docker version --format '{{.Server.Version}}')"
-major="${engine%%.*}"
-[[ "$major" =~ ^[0-9]+$ && "$major" -ge 28 ]] || stop 'Docker Engine 28+ diperlukan untuk binding loopback.'
+# APT simulation must never remove or upgrade existing installed packages.
+apt_safe_install() {
+  (( $# > 0 )) || return 0
+  local sim
+  sim="$(DEBIAN_FRONTEND=noninteractive apt-get -s -o DPkg::Lock::Timeout=30 install --no-install-recommends "$@")" || stop "APT cannot safely resolve: $*"
+  if grep -Eq '^Remv |^Inst [^ ]+ \[' <<< "$sim"; then
+    stop "APT plans removal or upgrade of installed packages. Review manually: $*"
+  fi
+  DEBIAN_FRONTEND=noninteractive apt-get -y -o DPkg::Lock::Timeout=30 install --no-install-recommends "$@"
+}
+
+install_cli_dependencies() {
+  local packages=() item cmd pkg
+  for item in 'git:git' 'python3:python3' 'ss:iproute2' 'curl:curl' \
+              'tar:tar' 'stat:coreutils' 'readlink:coreutils' 'sha256sum:coreutils' \
+              'flock:util-linux' 'mktemp:coreutils' 'install:coreutils'; do
+    cmd="${item%%:*}";pkg="${item#*:}"
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+      packages+=("$pkg")
+    fi
+  done
+  if (( ${#packages[@]} )); then
+    if [[ "$MODE" == check ]]; then
+      stop "Missing host tools (${packages[*]}). --install can install them; --check never modifies the host."
+    fi
+    say "Installing missing host tools: ${packages[*]}"
+    apt-get update -qq
+    # Deduplicate package names (coreutils etc.) while preserving order.
+    local unique=() known p
+    for p in "${packages[@]}"; do
+      known=0
+      for old in "${unique[@]}"; do [[ "$p" != "$old" ]] || known=1; done
+      (( known )) || unique+=("$p")
+    done
+    apt_safe_install "${unique[@]}"
+  fi
+}
+
+install_official_docker_engine() {
+  [[ "$MODE" != check ]] || stop 'Docker CLI missing; --install can install Docker Engine, --check is read-only.'
+  # Never replace an existing daemon, orphan an existing Docker data root, or
+  # break third-party containers such as Collabora.
+  if [[ -d /var/lib/docker || -S /var/run/docker.sock ]] || command -v dockerd >/dev/null 2>&1 || \
+     dpkg-query -W -f='${Status}' docker.io docker-ce containerd.io 2>/dev/null | grep -q 'install ok installed'; then
+    stop 'Existing Docker daemon/data/packages detected but docker CLI missing. Refusing reinstall.'
+  fi
+  say 'Docker is absent. Installing official Docker Engine (new host only).'
+  local dist arch codename temp_file key_file source_file expected_fp got_fp
+  dist="${ID}"
+  arch="$(dpkg --print-architecture)"
+  codename="${VERSION_CODENAME:-${UBUNTU_CODENAME:-}}"
+  [[ "$arch" =~ ^(amd64|arm64)$ && "$codename" =~ ^[a-z]+$ ]] || stop 'Unsupported OS codename/architecture for Docker APT.'
+  # Check repository release exists before writing host APT sources.
+  curl -fsSI --retry 2 --connect-timeout 10 "https://download.docker.com/linux/$dist/dists/$codename/Release" >/dev/null || \
+    stop "Official Docker APT repository not published for $dist/$codename. No Docker installation attempted."
+  apt-get update -qq
+  local extra=()
+  command -v gpg >/dev/null 2>&1 || extra+=(gnupg)
+  [[ -f /etc/ssl/certs/ca-certificates.crt ]] || extra+=(ca-certificates)
+  (( ${#extra[@]} == 0 )) || apt_safe_install "${extra[@]}"
+  key_file=/etc/apt/keyrings/docker.asc
+  source_file=/etc/apt/sources.list.d/docker.sources
+  if [[ -e "$source_file" || -L "$source_file" || -e "$key_file" || -L "$key_file" ]]; then
+    stop 'Docker APT source/key already exists in unexpected state; refusing overwrite.'
+  fi
+  install -d -m 0755 /etc/apt/keyrings
+  temp_file="$(mktemp)"
+  curl -fsSL --retry 3 --connect-timeout 15 "https://download.docker.com/linux/$dist/gpg" -o "$temp_file"
+  expected_fp='9DC858229FC7DD38854AE2D88D81803C0EBFCD88'
+  got_fp="$(gpg --show-keys --with-colons "$temp_file" 2>/dev/null | awk -F: '$1=="fpr" {print $10;exit}')"
+  [[ "$got_fp" == "$expected_fp" ]] || { rm -f "$temp_file"; stop 'Docker APT key fingerprint mismatch.'; }
+  install -m 0644 "$temp_file" "$key_file"
+  rm -f "$temp_file"
+  cat > "$source_file" <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/$dist
+Suites: $codename
+Components: stable
+Architectures: $arch
+Signed-By: $key_file
+EOF
+  chmod 0644 "$source_file"
+  apt-get update -qq
+  apt_safe_install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+  systemctl enable --now docker
+  docker info >/dev/null 2>&1 || stop 'New Docker Engine did not start.'
+  say 'Docker Engine and Compose installed and activated.'
+}
+
+ensure_docker_engine() {
+  if ! command -v docker >/dev/null 2>&1; then
+    install_official_docker_engine
+  else
+    local ctx endpoint engine major
+    ctx="$(docker context show 2>/dev/null)" || stop 'Cannot read Docker context.'
+    endpoint="$(docker context inspect "$ctx" --format '{{.Endpoints.docker.Host}}' 2>/dev/null)" || stop 'Cannot inspect Docker context.'
+    [[ "$endpoint" == unix://* ]] || stop 'Docker context must be a local UNIX socket.'
+    if ! docker info >/dev/null 2>&1; then
+      [[ "$MODE" != check ]] || stop 'Docker daemon is stopped. --check will not start it.'
+      say 'Docker installed but inactive. Starting existing daemon (no restart).'
+      systemctl start docker || stop 'Failed to start existing Docker daemon.'
+    fi
+  fi
+  local engine major ctx endpoint
+  ctx="$(docker context show)"
+  endpoint="$(docker context inspect "$ctx" --format '{{.Endpoints.docker.Host}}' 2>/dev/null)"
+  [[ "$endpoint" == unix://* ]] || stop 'Docker context is not local.'
+  docker info >/dev/null 2>&1 || stop 'Docker Engine unavailable.'
+  engine="$(docker version --format '{{.Server.Version}}')"
+  major="${engine%%.*}"
+  [[ "$major" =~ ^[0-9]+$ && "$major" -ge 28 ]] || stop 'Docker Engine 28+ required. Existing Engine is NEVER auto-upgraded.'
+}
+
+ensure_compose_plugin() {
+  docker compose version >/dev/null 2>&1 && { say "Compose ready: $(docker compose version --short)"; return 0; }
+  [[ "$MODE" != check ]] || stop 'Docker Compose plugin is missing. --install can install it; --check is read-only.'
+  say 'Compose plugin missing. Trying standalone CLI plugin package without changing Docker Engine.'
+  local sim candidate plugin_pkg
+  plugin_pkg=''
+  for candidate in docker-compose-plugin docker-compose-v2; do
+    if ! apt-cache policy "$candidate" 2>/dev/null | grep -Eq 'Candidate: [^ (][^ ]*'; then
+      continue
+    fi
+    sim="$(apt-get -s install --no-install-recommends "$candidate" 2>/dev/null || true)"
+    if [[ -n "$sim" ]] && ! grep -Eq '^Remv |^Inst (docker-ce |docker-ce-cli |docker.io |containerd.io |containerd |runc )|^Inst [^ ]+ \[' <<< "$sim"; then
+      plugin_pkg="$candidate"
+      break
+    fi
+  done
+  if [[ -n "$plugin_pkg" ]]; then
+    apt_safe_install "$plugin_pkg"
+  fi
+  if docker compose version >/dev/null 2>&1; then
+    say "Compose plugin activated: $(docker compose version --short)"
+    return 0
+  fi
+  # No compatible apt package: use an immutable, SHA-256 verified official
+  # Docker Compose release. Never overwrite a pre-existing plugin binary.
+  local asset digest arch dest tmp
+  arch="$(uname -m)"
+  case "$arch" in
+    x86_64) asset=docker-compose-linux-x86_64; digest=40343e21ca777173e69cff5dbafeb37c6f81f3b0d57d9e597f036e95eb63e76a ;;
+    aarch64) asset=docker-compose-linux-aarch64; digest=733ec76717ceb59052a9609bdadfb523b2df8eab57a54212872d10a58078ea2 ;;
+    *) stop "No pinned Compose CLI plugin for architecture: $arch" ;;
+  esac
+  dest=/usr/local/lib/docker/cli-plugins/docker-compose
+  [[ ! -e "$dest" && ! -L "$dest" ]] || stop "Compose plugin path already exists: $dest. Review before changing it."
+  tmp="$(mktemp)"
+  if ! curl -fSL --retry 3 --connect-timeout 20 --max-time 180 \
+    "https://github.com/docker/compose/releases/download/v5.6.0/$asset" -o "$tmp"; then
+    rm -f "$tmp"
+    stop 'Failed to download official Docker Compose binary.'
+  fi
+  if ! printf '%s  %s\n' "$digest" "$tmp" | sha256sum -c - >/dev/null; then
+    rm -f "$tmp"
+    stop 'Compose binary SHA-256 verification failed.'
+  fi
+  install -d -m 0755 "$(dirname "$dest")"
+  install -m 0755 "$tmp" "$dest"
+  rm -f "$tmp"
+  # Keep existing Docker Engine untouched. An invalid plugin can be removed
+  # only when its exact newly installed path is still the one we own.
+  if ! docker compose version >/dev/null 2>&1; then
+    rm -f "$dest"
+    stop 'Downloaded Compose plugin was not recognized; no Docker daemon restart performed.'
+  fi
+  say "Verified Compose plugin activated: $(docker compose version --short)"
+}
+
+install_cli_dependencies
+if [[ "$MODE" != check ]]; then
+  flock -n 8 || stop 'Another Multitek PM prerequisites operation is running.'
+fi
+ensure_docker_engine
+ensure_compose_plugin
+for cmd in git docker python3 ss curl flock tar stat readlink sha256sum; do
+  command -v "$cmd" >/dev/null 2>&1 || stop "$cmd is still missing after prerequisites installation."
+done
 
 # Installer must come from the tracked repository, not from a renamed external payload.
 SELF="$(readlink -f "${BASH_SOURCE[0]}")"
@@ -92,7 +286,7 @@ git -C "$SOURCE_ROOT" ls-files --error-unmatch ops/install-vps.sh >/dev/null 2>&
 [[ -z "$(git -C "$SOURCE_ROOT" status --porcelain --untracked-files=no)" ]] || stop 'Source tracked belum clean. Review perubahan lalu gunakan commit/release.'
 COMMIT="$(git -C "$SOURCE_ROOT" rev-parse HEAD)"
 [[ "$COMMIT" =~ ^[a-f0-9]{40}$ ]] || stop 'Commit checkout tidak valid.'
-for file in compose.yaml requirements.txt pmctl app/manage.py app/config/settings.py app/config/test_settings.py app/maintenance/management/commands/pm_bootstrap.py db-init/10-pm-role.sh; do
+for file in compose.yaml requirements.txt pmctl app/manage.py app/config/settings.py app/config/test_settings.py app/config/first_login.py app/maintenance/test_first_login_password.py app/maintenance/management/commands/pm_bootstrap.py db-init/10-pm-role.sh; do
   [[ -f "$SOURCE_ROOT/$file" && ! -L "$SOURCE_ROOT/$file" ]] || stop "Source wajib hilang atau symlink: $file"
 done
 if [[ -n "$DOMAIN" ]]; then
@@ -100,6 +294,8 @@ if [[ -n "$DOMAIN" ]]; then
     grep -Fq "$setting" "$SOURCE_ROOT/app/config/settings.py" || stop "Source belum mendukung HTTPS origin: $setting"
   done
 fi
+grep -Fq 'config.first_login.EnforceInitialAdminPasswordChange' "$SOURCE_ROOT/app/config/settings.py" || stop 'First-login password rotation middleware belum diaktifkan; jalankan python3 ops/enable-first-login.py pada repo sebelum push.'
+grep -Fq "path('password/'," "$SOURCE_ROOT/app/config/urls.py" || stop 'Rute ganti password Django tidak ditemukan.'
 for rel in .env private sparepart_uploads; do
   if git -C "$SOURCE_ROOT" ls-files --error-unmatch "$rel" >/dev/null 2>&1 || git -C "$SOURCE_ROOT" ls-files "$rel/" | grep -q .; then
     stop "Repo melacak path runtime/secret: $rel"
@@ -181,7 +377,7 @@ for d in dirs: os.chmod(d,0o755)
 for f,executable in files: os.chmod(f,0o755 if executable else 0o644)
 print('PASS source permission: %d folder, %d file; code bisa dibaca UID 10001 dan PostgreSQL.'%(len(dirs),len(files)))
 PY
-for req in compose.yaml requirements.txt app/manage.py db-init/10-pm-role.sh ops/install-vps.sh; do
+for req in compose.yaml requirements.txt app/manage.py app/config/first_login.py app/maintenance/test_first_login_password.py db-init/10-pm-role.sh ops/install-vps.sh; do
   [[ -f "$ROOT/$req" ]] || stop "Snapshot tidak lengkap: $req"
 done
 
@@ -213,11 +409,12 @@ files={
  p/'.env':''.join(k+'='+v+'\n' for k,v in config.items()),
  p/'private/bootstrap.env':'PM_ADMIN_PASSWORD='+admin+'\n',
  p/'private/login.txt':(
-  'Multitek PM - password awal. JANGAN unggah file ini ke GitHub.\n'
+  'Multitek PM - temporary login for fresh VPS. DO NOT commit to GitHub.\n'
   'Username: admin\nPassword: '+admin+'\n'
   'Git commit: '+os.environ['COMMIT']+'\n'
   'Origin host: http://127.0.0.1:18080\n'
   'Hostname: '+('https://'+domain if domain else '(local-only)')+'\n'
+  'WARNING: on first login immediately change the default password via /password/.\n'
  ),
 }
 for f,body in files.items():
@@ -289,6 +486,40 @@ SQL
 say 'Migrasi PostgreSQL PM baru, buat grup/role dan admin awal, init scheduler.'
 compose --profile tools run --rm --no-deps bootstrap
 
+say 'Set temporary default password for the newly created admin only.'
+# Django bootstrap enforces a strong bootstrap password. Keep this security test;
+# then set the explicitly requested short default after the new admin exists.
+# Never touch existing users/databases: fresh role/migration guard above must pass.
+compose --profile tools run --rm --no-deps bootstrap python manage.py shell -c '
+import os
+from django.contrib.auth import get_user_model
+User = get_user_model()
+qs = User.objects.filter(username="admin", is_superuser=True, is_staff=True)
+assert qs.count() == 1, "Expected exactly one newly created superuser"
+u = qs.get()
+assert u.check_password(os.environ["PM_ADMIN_PASSWORD"]), "Bootstrap admin state unexpected"
+u.set_password("admin123")
+u.save(update_fields=["password"])
+u.refresh_from_db()
+assert u.check_password("admin123"), "Default admin password was not set"
+from django.conf import settings
+assert "config.first_login.EnforceInitialAdminPasswordChange" in settings.MIDDLEWARE, "First-login enforcement inactive"
+print("PASS: admin default password set; first-login enforcement active")
+'
+# Synchronize private login note only after DB password has been updated.
+python3 - "$APP/private/login.txt" <<'PY_ADMIN_DEFAULT'
+from pathlib import Path
+import sys
+p=Path(sys.argv[1]);raw=p.read_text()
+lines=raw.splitlines(keepends=True)
+assert sum(x.startswith('Username: admin') for x in lines)==1
+assert sum(x.startswith('Password: ') for x in lines)==1
+result=''.join('Password: admin123\n' if x.startswith('Password: ') else x for x in lines)
+p.write_text(result)
+p.chmod(0o600)
+print('PASS: root-only login.txt synchronized to requested first-login password')
+PY_ADMIN_DEFAULT
+
 say 'Start hanya web dan scheduler project Multitek PM.'
 compose up -d --no-deps web scheduler
 login_host="${DOMAIN:-localhost}"
@@ -326,11 +557,13 @@ done <<< "$OLD_RUNNING"
 say 'SUKSES: Multitek PM siap di host localhost:18080.'
 compose ps
 printf '\nSource commit: %s\n' "$COMMIT"
-printf 'Akun admin: sudo cat /opt/multitek-pm/private/login.txt (JANGAN bagikan password).\n'
+printf 'First login: admin / admin123 (FORCED password change at /password/).\n'
+printf 'Credential file: sudo cat /opt/multitek-pm/private/login.txt (do not share).\n'
 if [[ -n "$DOMAIN" ]]; then
   printf 'Cloudflare hostname: https://%s\n' "$DOMAIN"
-  printf 'Pasang route pada tunnel di VPS INI: HTTP -> http://127.0.0.1:18080\n'
-  printf 'Pastikan Cloudflare Access dan DNS aktif. Installer TIDAK mengubah tunnel atau DNS.\n'
+  printf 'Pasang route pada tunnel NATIVE VPS INI: HTTP -> http://127.0.0.1:18080\n'
+  printf 'WAJIB: aktifkan Cloudflare Access sebelum memublikasikan password awal universal.\n'
+  printf 'Installer TIDAK mengubah tunnel, token, DNS, atau Access.\n'
 else
   printf 'Mode local-only: gunakan SSH forwarding untuk login tanpa hostname publik.\n'
 fi
